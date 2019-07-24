@@ -1,0 +1,44 @@
+run:
+  deadline: 2m
+  tests: false
+linters-settings:
+  errcheck:
+    check-type-assertions: false
+  govet:
+    check-shadowing: true
+  golint:
+    min-confidence: 0.8
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/Depado/parakeet
+  gocyclo:
+    min-complexity: 15
+  maligned:
+    suggest-new: true
+  depguard:
+    list-type: blacklist
+    include-go-root: false
+    packages:
+      - github.com/davecgh/go-spew/spew
+  misspell:
+    locale: US
+  unused:
+    check-exported: true
+  unparam:
+    check-exported: true
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: false
+linters:
+  enable-all: true
+  disable:
+    - dupl
+    - lll
+    - maligned
+    - megacheck
+    - gochecknoglobals
+    - goimports
+    - gocyclo
+    - gocritic
