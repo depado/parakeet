@@ -1,5 +1,3 @@
-# parakeet
-
 <h1 align="center">Parakeet</h1>
 <h2 align="center">
   <img src="img/parakeet.gif" alt="mascot" height="350px">
@@ -15,6 +13,7 @@
   SoundCloud player in your terminal
 </h2>
 
-Note: This is a work in progress.
+Note: This is a work in progress. Documentation should be updated soon.
+The code is currently in a **very** dirty state.
 
 ![screenshot](img/screenshot.png)
