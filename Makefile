@@ -1,7 +1,6 @@
 .DEFAULT_GOAL := build
 
 export GO111MODULE=on
-export CGO_ENABLED=0
 export VERSION=$(shell git describe --abbrev=0 --tags 2> /dev/null || echo "0.1.0")
 export BUILD=$(shell git rev-parse HEAD 2> /dev/null || echo "undefined")
 BINARY=parakeet
@@ -14,6 +13,10 @@ help:
 .PHONY: build
 build: ## Build
 	go build $(LDFLAGS) -o $(BINARY) 
+
+.PHONE: install
+install: ## Build and install the binary
+	go install $(LDFLAGS)
 
 .PHONY: release
 release: ## Create a new release on Github
