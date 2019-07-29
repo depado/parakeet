@@ -18,6 +18,14 @@ The code is currently in a **very** dirty state.
 
 ![screenshot](img/screenshot.png)
 
+## Limitations
+
+Currently, parakeet has some limitations:
+
+- It will play only the last 50 favorites tracks from the user ID you provide
+- It can't read Go+ sounds even if the client ID comes from a Go+ account
+- Some tracks can't be fetched properly and will be skipped automatically
+
 ## Install
 
 From source:
@@ -30,6 +38,11 @@ $ make install
 
 Alternatively you can download the binary release of parakeet on the 
 [releases page](https://github.com/Depado/parakeet/releases).
+
+This project uses [beep](https://github.com/faiface/beep) which in turn uses 
+[oto](https://github.com/hajimehoshi/oto) so make sure to check the 
+[requirements](https://github.com/hajimehoshi/oto#prerequisite) before trying to 
+run parakeet.
 
 ## Configure
 
@@ -52,7 +65,10 @@ You can also pass these settings using flags when running parakeet:
 $ parakeet --client_id <yourclientID> --user_id <youruserID>
 ```
 
-This project uses [beep](https://github.com/faiface/beep) which in turn uses 
-[oto](https://github.com/hajimehoshi/oto) so make sure to check the 
-[requirements](https://github.com/hajimehoshi/oto#prerequisite) before trying to 
-run parakeet.
+## TODO
+
+- [] Display more metadata in the information panel
+- [] Allow to pass directly an URL to a playlist or user to stream music from
+- [] Implement pagination
+- [] Refactor player logic
+- [] Handle clicks (move cursor in track, play/pause, etc)

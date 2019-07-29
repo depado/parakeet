@@ -1,7 +1,6 @@
 package player
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -51,14 +50,10 @@ func (p *Player) StreamerFromTrack(t *soundcloud.Track) (*StreamerFormat, io.Rea
 	var output *sc.StreamOutput
 
 	if output, err = p.c.Stream(t); err != nil {
-		fmt.Println(err)
-
 		return nil, nil, errors.Wrap(err, "get stream URLs")
 	}
 
 	if resp, err = http.Get(output.HTTPMp3128URL); err != nil {
-		fmt.Println(err)
-
 		return nil, nil, errors.Wrap(err, "http request for mp3 failed")
 	}
 
@@ -94,7 +89,10 @@ func (p *Player) Start(t *soundcloud.Track) error {
 		select {
 		case track := <-p.tc:
 			if sf, s, err = p.StreamerFromTrack(track); err != nil {
-				return errors.Wrap(err, "unable to get streamer from track")
+				// If an error occurs, go to the next track
+				p.streamerc <- nil
+				p.next <- true
+				break
 			}
 			speaker.Clear()
 			if p.source != nil {

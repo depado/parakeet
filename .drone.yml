@@ -9,6 +9,7 @@ steps:
   - name: deps
     path: /go
   commands:
+  - apt install libasound2-dev
   - make
 
 - name: test

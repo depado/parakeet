@@ -41,7 +41,7 @@ func (c *Client) Stream(t *soundcloud.Track) (*StreamOutput, error) {
 	var out StreamOutput
 
 	if req, err = sling.New().
-		Get(fmt.Sprintf("https://api.soundcloud.com/i1/tracks/%d/streams", t.Id)).
+		Get(fmt.Sprintf("https://api.soundcloud.com/tracks/%d/streams", t.Id)).
 		QueryStruct(StreamParam{ClientID: c.clientID}).
 		Request(); err != nil {
 		return nil, errors.Wrap(err, "create request")
