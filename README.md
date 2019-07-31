@@ -67,8 +67,8 @@ $ parakeet --client_id <yourclientID> --user_id <youruserID>
 
 ## TODO
 
-- [] Display more metadata in the information panel
-- [] Allow to pass directly an URL to a playlist or user to stream music from
-- [] Implement pagination
-- [] Refactor player logic
-- [] Handle clicks (move cursor in track, play/pause, etc)
+- [ ] Display more metadata in the information panel
+- [ ] Allow to pass directly an URL to a playlist or user to stream music from
+- [ ] Implement pagination
+- [ ] Refactor player logic
+- [ ] Handle clicks (move cursor in track, play/pause, etc)
