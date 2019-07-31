@@ -71,7 +71,7 @@ func NewClient(clientID string) *Client {
 		},
 		clientID: clientID,
 		hc: &http.Client{
-			Timeout: time.Duration(5 * time.Second),
+			Timeout: 5 * time.Second,
 		},
 	}
 }

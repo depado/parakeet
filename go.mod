@@ -6,6 +6,7 @@ require (
 	github.com/dghubble/sling v1.3.0
 	github.com/faiface/beep v1.0.1
 	github.com/gizak/termui/v3 v3.1.0
+	github.com/karalabe/xgo v0.0.0-20190301120235-2d6d1848fb02 // indirect
 	github.com/nsf/termbox-go v0.0.0-20190624072549-eeb6cd0a1762 // indirect
 	github.com/pkg/errors v0.8.1
 	github.com/sirupsen/logrus v1.4.2

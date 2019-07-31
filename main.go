@@ -56,7 +56,11 @@ func run() {
 	togglechan := make(chan bool)
 	nextchan := make(chan bool)
 	player := player.NewPlayer(c, trackchan, togglechan, nextchan, streamerchan)
-	go player.Start(playing)
+	go func() {
+		if err = player.Start(playing); err != nil {
+			logrus.WithError(err).Fatal("Unable to start player")
+		}
+	}()
 	current = <-streamerchan
 
 	// Initialize UI

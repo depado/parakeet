@@ -5,3 +5,4 @@
 vendor/
 parakeet
 conf.yml
+coverage.txt

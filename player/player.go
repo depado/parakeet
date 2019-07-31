@@ -53,7 +53,7 @@ func (p *Player) StreamerFromTrack(t *soundcloud.Track) (*StreamerFormat, io.Rea
 		return nil, nil, errors.Wrap(err, "get stream URLs")
 	}
 
-	if resp, err = http.Get(output.HTTPMp3128URL); err != nil {
+	if resp, err = http.Get(output.HTTPMp3128URL); err != nil { // nolint: bodyclose
 		return nil, nil, errors.Wrap(err, "http request for mp3 failed")
 	}
 
@@ -79,7 +79,9 @@ func (p *Player) Start(t *soundcloud.Track) error {
 	p.source = s
 	defer p.source.Close()
 
-	speaker.Init(sf.Format.SampleRate, sf.Format.SampleRate.N(100*time.Millisecond))
+	if err = speaker.Init(sf.Format.SampleRate, sf.Format.SampleRate.N(100*time.Millisecond)); err != nil {
+		return err
+	}
 	ctrl := &beep.Ctrl{Streamer: sf.Streamer, Paused: false}
 	speaker.Play(beep.Seq(ctrl, beep.Callback(func() {
 		p.next <- true

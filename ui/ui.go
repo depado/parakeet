@@ -33,7 +33,7 @@ func NewTracklistWidget(height, width int, tt []*soundcloud.Track) *widgets.List
 
 // NewLogoWidget will return a new paragraph widget containing the logo of the
 // app
-func NewLogoWidget(height, width int) *widgets.Paragraph {
+func NewLogoWidget(height, width int) *widgets.Paragraph { // nolint: unparam
 	w := widgets.NewParagraph()
 	w.Border = false
 	w.Text = Logo
@@ -43,7 +43,7 @@ func NewLogoWidget(height, width int) *widgets.Paragraph {
 }
 
 // NewHelpWidget will return a new paragraph widget containing the help text
-func NewHelpWidget(height, width int) *widgets.Paragraph {
+func NewHelpWidget(height, width int) *widgets.Paragraph { // nolint: unparam
 	w := widgets.NewParagraph()
 	w.Text = "     [[↑]](fg:blue,mod:bold)/[[↓]](fg:blue,mod:bold) Browse Tracklist\n" +
 		"    [[Return]](fg:blue,mod:bold) Play Selected Track\n" +
