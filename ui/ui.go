@@ -21,6 +21,7 @@ func NewTracklistWidget(height, width int, tt []*soundcloud.Track) *widgets.List
 	tracklist.SelectedRowStyle = ui.NewStyle(ui.ColorWhite, ui.ColorBlue)
 	tracklist.SelectedRow = 0
 	tracklist.Rows = make([]string, 0, len(tt))
+
 	for i, t := range tt {
 		if i == 0 {
 			tracklist.Rows = append(tracklist.Rows, fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", tt[0].Title, tt[0].User.Username))
@@ -28,6 +29,7 @@ func NewTracklistWidget(height, width int, tt []*soundcloud.Track) *widgets.List
 			tracklist.Rows = append(tracklist.Rows, fmt.Sprintf("%s - %s", t.Title, t.User.Username))
 		}
 	}
+
 	return tracklist
 }
 
@@ -39,6 +41,7 @@ func NewLogoWidget(height, width int) *widgets.Paragraph { // nolint: unparam
 	w.Text = Logo
 	w.TextStyle = ui.NewStyle(ui.ColorYellow, ui.ColorClear, ui.ModifierBold)
 	w.SetRect(-1, -1, width-35, 9)
+
 	return w
 }
 
@@ -51,6 +54,7 @@ func NewHelpWidget(height, width int) *widgets.Paragraph { // nolint: unparam
 		"[[q]](fg:blue,mod:bold)/[[Ctrl+C]](fg:blue,mod:bold) Exit"
 	w.Border = false
 	w.SetRect(width-35, 2, width, 9)
+
 	return w
 }
 
@@ -82,5 +86,6 @@ func NewInfoWidget(height, width int) *InfoWidget {
 	w.PaddingTop = 1
 	w.PaddingLeft = 1
 	w.SetRect(width/2, 9, width, height-2)
+
 	return &InfoWidget{w}
 }

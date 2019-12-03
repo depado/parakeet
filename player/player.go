@@ -1,8 +1,8 @@
 package player
 
 import (
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
@@ -11,6 +11,7 @@ import (
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/yanatan16/golang-soundcloud/soundcloud"
 )
 
@@ -45,22 +46,25 @@ func NewPlayer(c *sc.Client, tc <-chan *soundcloud.Track, toggle <-chan bool, ne
 // StreamerFromTrack will retrieve a stream from the track and return the
 // streamer, format and total duration, as well as the source
 func (p *Player) StreamerFromTrack(t *soundcloud.Track) (*StreamerFormat, io.ReadCloser, error) {
-	var err error
-	var resp *http.Response
-	var output *sc.StreamOutput
+	var (
+		err    error
+		resp   *http.Response
+		output *sc.StreamOutput
+	)
 
 	if output, err = p.c.Stream(t); err != nil {
-		return nil, nil, errors.Wrap(err, "get stream URLs")
+		return nil, nil, fmt.Errorf("get stream URLs: %w", err)
 	}
 
 	if resp, err = http.Get(output.HTTPMp3128URL); err != nil { // nolint: bodyclose
-		return nil, nil, errors.Wrap(err, "http request for mp3 failed")
+		return nil, nil, fmt.Errorf("http request for mp3 failed: %w", err)
 	}
 
 	streamer, format, err := mp3.Decode(resp.Body)
 	if err != nil {
-		log.Fatal(err)
+		logrus.WithError(err).Fatal("Unable to decode MP3")
 	}
+
 	return &StreamerFormat{
 		Streamer:      streamer,
 		Format:        format,
@@ -82,11 +86,13 @@ func (p *Player) Start(t *soundcloud.Track) error {
 	if err = speaker.Init(sf.Format.SampleRate, sf.Format.SampleRate.N(100*time.Millisecond)); err != nil {
 		return err
 	}
+
 	ctrl := &beep.Ctrl{Streamer: sf.Streamer, Paused: false}
 	speaker.Play(beep.Seq(ctrl, beep.Callback(func() {
 		p.next <- true
 	})))
 	p.streamerc <- sf
+
 	for {
 		select {
 		case track := <-p.tc:

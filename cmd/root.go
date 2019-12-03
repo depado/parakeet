@@ -15,6 +15,7 @@ func AddFlags(c *cobra.Command) {
 	c.PersistentFlags().StringP("conf", "c", "", "configuration file to use")
 	c.PersistentFlags().StringP("client_id", "i", "", "client id for the soundcloud API")
 	c.PersistentFlags().Uint64P("user_id", "u", 0, "user id to fetch data from")
+
 	if err := viper.BindPFlags(c.PersistentFlags()); err != nil {
 		logrus.WithError(err).WithField("step", "AddAllFlags").Fatal("Couldn't bind flags")
 	}
@@ -35,6 +36,7 @@ func Initialize() {
 		viper.AddConfigPath(".")
 		viper.AddConfigPath("/config/")
 	}
+
 	hasconf := viper.ReadInConfig() == nil
 
 	if viper.GetBool("debug") {

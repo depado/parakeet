@@ -40,8 +40,10 @@ var versionCmd = &cobra.Command{
 }
 
 func run() {
+	logrus.WithField("build", Build).WithField("version", Version).Debug("Starting Parakeet")
 	c := sc.NewClient(viper.GetString("client_id"))
 	u := c.User(viper.GetUint64("user_id"))
+
 	tt, err := u.Favorites(url.Values{})
 	if err != nil {
 		logrus.WithError(err).Fatal("Unable to get favorite tracks")
@@ -56,6 +58,7 @@ func run() {
 	togglechan := make(chan bool)
 	nextchan := make(chan bool)
 	player := player.NewPlayer(c, trackchan, togglechan, nextchan, streamerchan)
+
 	go func() {
 		if err = player.Start(playing); err != nil {
 			logrus.WithError(err).Fatal("Unable to start player")
@@ -100,6 +103,7 @@ func run() {
 	// Main control loop
 	uiEvents := termui.PollEvents()
 	ticker := time.NewTicker(100 * time.Millisecond).C
+
 	for {
 		select {
 		case e := <-uiEvents:
