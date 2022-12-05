@@ -3,50 +3,44 @@ kind: pipeline
 name: default
 
 steps:
-- name: build
-  image: golang:latest
-  volumes:
-  - name: deps
-    path: /go
-  commands:
-  - apt-get -qq -y update > /dev/null && apt-get install -qq -y libasound2-dev > /dev/null
-  - make
+  - name: build
+    image: golang:latest
+    volumes:
+      - name: deps
+        path: /go
+    commands:
+      - apt-get -qq -y update > /dev/null && apt-get install -qq -y libasound2-dev > /dev/null
+      - make
 
-- name: test
-  image: golang:latest
-  volumes:
-  - name: deps
-    path: /go
-  commands:
-  - apt-get -qq -y update > /dev/null && apt-get install -qq -y libasound2-dev > /dev/null
-  - make test
+  - name: test
+    image: golang:latest
+    volumes:
+      - name: deps
+        path: /go
+    commands:
+      - apt-get -qq -y update > /dev/null && apt-get install -qq -y libasound2-dev > /dev/null
+      - make test
 
-- name: linter
-  image: golang:latest
-  volumes:
-  - name: deps
-    path: /go
-  commands:
-  - apt-get -qq -y update > /dev/null && apt-get install -qq -y libasound2-dev > /dev/null
-  - curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s v1.16.0
-  - ./bin/golangci-lint run
+  - name: linter
+    image: golang:latest
+    volumes:
+      - name: deps
+        path: /go
+    commands:
+      - apt-get -qq -y update > /dev/null && apt-get install -qq -y libasound2-dev > /dev/null
+      - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s
+      - ./bin/golangci-lint run --timeout 5m
+      - rm -r ./bin/
 
-
-- name: telegram
-  image: appleboy/drone-telegram
-  settings:
-    to: 790376882
-    format: markdown
-    token:
-      from_secret: telegram_token
-    message: >
-      *{{repo.name}}*  
-
-      [Build {{build.number}}]({{build.link}}) by {{commit.author}} {{#success build.status}}succeeded{{else}}failed{{/success}} in {{buildtime build.started}}  
-
-      `{{truncate commit.sha 8}}`: "{{commit.message}}"
+  - name: telegram
+    image: appleboy/drone-telegram
+    settings:
+      to: 790376882
+      format: markdown
+      token:
+        from_secret: telegram_token
 
 volumes:
-- name: deps
-  host:
-    path: /var/lib/cache/godeps/
+  - name: deps
+    host:
+      path: /var/lib/cache/godeps/

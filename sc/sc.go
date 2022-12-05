@@ -3,7 +3,7 @@ package sc
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -53,7 +53,7 @@ func (c *Client) Stream(t *soundcloud.Track) (*StreamOutput, error) {
 	}
 	defer resp.Body.Close()
 
-	o, err := ioutil.ReadAll(resp.Body)
+	o, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
