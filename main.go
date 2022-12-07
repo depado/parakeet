@@ -2,73 +2,78 @@ package main
 
 import (
 	"fmt"
-	"log"
-	"net/url"
 	"time"
 
 	"github.com/faiface/beep/speaker"
 	"github.com/gizak/termui/v3"
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
-	"github.com/yanatan16/golang-soundcloud/soundcloud"
 
 	"github.com/Depado/parakeet/cmd"
 	"github.com/Depado/parakeet/player"
-	"github.com/Depado/parakeet/sc"
 	"github.com/Depado/parakeet/ui"
-)
-
-// Build number and versions injected at compile time, set yours
-var (
-	Version = "unknown"
-	Build   = "unknown"
+	"github.com/Depado/soundcloud"
 )
 
 // Main command that will be run when no other command is provided on the
 // command-line
 var rootCmd = &cobra.Command{
 	Use: "parakeet",
-	Run: func(cmd *cobra.Command, args []string) { run() }, // nolint: unparam
+	Run: func(cc *cobra.Command, _ []string) {
+		// Configuration
+		c, err := cmd.NewConf()
+		if err != nil {
+			log.Fatal().Err(err).Msg("unable to load conf")
+		}
+		// Logger
+		l := cmd.NewLogger(c)
+		// Soundcloud client
+		scc, err := soundcloud.NewAutoIDClient()
+		if err != nil {
+			l.Fatal().Err(err).Msg("unable to initialize soundcloud client")
+		}
+		run(c, l, scc)
+	},
 }
 
-// Version command that will display the build number and version (if any)
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Show build and version",
-	Run:   func(cmd *cobra.Command, args []string) { fmt.Printf("Build: %s\nVersion: %s\n", Build, Version) }, // nolint: unparam
-}
-
-func run() {
-	logrus.WithField("build", Build).WithField("version", Version).Debug("Starting Parakeet")
-	c := sc.NewClient(viper.GetString("client_id"))
-	u := c.User(viper.GetUint64("user_id"))
-
-	tt, err := u.Favorites(url.Values{})
-	if err != nil {
-		logrus.WithError(err).Fatal("Unable to get favorite tracks")
+func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
+	l.Debug().Str("build", cmd.Build).Str("version", cmd.Version).Msg("starting parakeet")
+	if c.UserID == "" && c.URL == "" {
+		l.Fatal().Msg("no user id or url, nothing to do")
 	}
+
+	pls, err := scc.Playlist().FromURL(c.URL)
+	if err != nil {
+		l.Fatal().Err(err).Msg("unable to get playlists")
+	}
+
+	pl, err := pls.Get()
+	if err != nil {
+		l.Fatal().Err(err).Msg("unable to retrieve tracks")
+	}
+
 	playingindex := 0
-	playing := tt[playingindex]
+	playing := pl.Tracks[playingindex]
 	var current *player.StreamerFormat
 
 	// Player setup and start
 	streamerchan := make(chan *player.StreamerFormat)
-	trackchan := make(chan *soundcloud.Track)
+	trackchan := make(chan soundcloud.Track)
 	togglechan := make(chan bool)
 	nextchan := make(chan bool)
-	player := player.NewPlayer(c, trackchan, togglechan, nextchan, streamerchan)
+	player := player.NewPlayer(scc, trackchan, togglechan, nextchan, streamerchan)
 
 	go func() {
 		if err = player.Start(playing); err != nil {
-			logrus.WithError(err).Fatal("Unable to start player")
+			l.Fatal().Err(err).Msg("unable to start player")
 		}
 	}()
 	current = <-streamerchan
 
 	// Initialize UI
 	if err := termui.Init(); err != nil {
-		log.Fatalf("failed to initialize termui: %v", err)
+		l.Fatal().Err(err).Msg("failed to initialize termui")
 	}
 	defer termui.Close()
 
@@ -77,7 +82,7 @@ func run() {
 	logowidget := ui.NewLogoWidget(h, w)
 	helpwidget := ui.NewHelpWidget(h, w)
 	infowidget := ui.NewInfoWidget(h, w)
-	tracklist := ui.NewTracklistWidget(h, w, tt)
+	tracklist := ui.NewTracklistWidget(h, w, pl.Tracks)
 	playerwidget := ui.NewPlayerWidget(h, w)
 
 	// Draw function executed periodically or on event
@@ -111,7 +116,7 @@ func run() {
 			case "<Enter>":
 				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:green)", playing.Title, playing.User.Username)
 				playingindex = tracklist.SelectedRow
-				playing = tt[playingindex]
+				playing = pl.Tracks[playingindex]
 				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
 				trackchan <- playing
 				current = <-streamerchan
@@ -138,26 +143,26 @@ func run() {
 		case <-ticker:
 			draw()
 		case <-nextchan:
-			if playingindex < len(tt) {
-				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:green)", playing.Title, playing.User.Username)
-				playingindex++
-				playing = tt[playingindex]
-				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
-				trackchan <- playing
-				current = <-streamerchan
+			tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:green)", playing.Title, playing.User.Username)
+			playingindex++
+			if playingindex >= len(pl.Tracks) {
+				playingindex = 0
 			}
+			playing = pl.Tracks[playingindex]
+			tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
+			trackchan <- playing
+			current = <-streamerchan
 		}
 	}
 }
 
 func main() {
 	// Initialize Cobra and Viper
-	cobra.OnInitialize(cmd.Initialize)
-	cmd.AddFlags(rootCmd)
-	rootCmd.AddCommand(versionCmd)
+	cmd.AddAllFlags(rootCmd)
+	rootCmd.AddCommand(cmd.VersionCmd)
 
 	// Run the command
 	if err := rootCmd.Execute(); err != nil {
-		logrus.WithError(err).Fatal("Couldn't start")
+		log.Fatal().Err(err).Msg("unable to start")
 	}
 }

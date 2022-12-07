@@ -32,6 +32,42 @@ steps:
       - ./bin/golangci-lint run --timeout 5m
       - rm -r ./bin/
 
+  - name: docker latest
+    image: plugins/docker
+    settings:
+      username: Depado
+      password:
+        from_secret: ghcr_pat
+      repo: ghcr.io/Depado/parakeet
+      registry: ghcr.io
+      tags:
+        - latest
+        - "${DRONE_COMMIT_SHA}"
+      build_args:
+        - version="latest"
+        - build="${DRONE_COMMIT_SHA}"
+    when:
+      event: [push]
+      branch: [master]
+
+  - name: docker tag
+    image: plugins/docker
+    settings:
+      username: Depado
+      password:
+        from_secret: ghcr_pat
+      repo: ghcr.io/Depado/parakeet
+      registry: ghcr.io
+      tags:
+        - latest
+        - "${DRONE_TAG}"
+        - "${DRONE_COMMIT_SHA}"
+      build_args:
+        - version="${DRONE_TAG}"
+        - build="${DRONE_COMMIT_SHA}"
+    when:
+      event: [tag]
+
   - name: telegram
     image: appleboy/drone-telegram
     settings:

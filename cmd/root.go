@@ -1,52 +1,38 @@
 package cmd
 
 import (
-	"strings"
-
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-// AddFlags will add all the flags provided in this package to the provided
-// command and will bind those flags with viper
-func AddFlags(c *cobra.Command) {
-	c.PersistentFlags().BoolP("debug", "d", false, "enable debug logs")
-	c.PersistentFlags().StringP("conf", "c", "", "configuration file to use")
-	c.PersistentFlags().StringP("client_id", "i", "", "client id for the soundcloud API")
-	c.PersistentFlags().Uint64P("user_id", "u", 0, "user id to fetch data from")
-
-	if err := viper.BindPFlags(c.PersistentFlags()); err != nil {
-		logrus.WithError(err).WithField("step", "AddAllFlags").Fatal("Couldn't bind flags")
-	}
+// AddLoggerFlags adds support to configure the level of the logger.
+func AddLoggerFlags(c *cobra.Command) {
+	c.PersistentFlags().String("log.level", "info", "one of debug, info, warn, error or fatal")
+	c.PersistentFlags().String("log.type", "console", `one of "console" or "json"`)
+	c.PersistentFlags().Bool("log.caller", false, "display the file and line where the call was made")
 }
 
-// Initialize will be run when cobra finishes its initialization
-func Initialize() {
-	// Environment variables
-	viper.AutomaticEnv()
-	viper.SetEnvPrefix("parakeet")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+// AddConfigurationFlag adds support to provide a configuration file on the
+// command line.
+func AddConfigurationFlag(c *cobra.Command) {
+	c.PersistentFlags().StringP("conf", "c", "", "configuration file to use")
+}
 
-	// Configuration file
-	if viper.GetString("conf") != "" {
-		viper.SetConfigFile(viper.GetString("conf"))
-	} else {
-		viper.SetConfigName("conf")
-		viper.AddConfigPath(".")
-		viper.AddConfigPath("/config/")
-	}
+// AddSoundCloudFlags adds support for SoundCloud related flags.
+func AddSoundCloudFlags(c *cobra.Command) {
+	c.PersistentFlags().StringP("user_id", "i", "", "user id to use")
+	c.PersistentFlags().StringP("url", "u", "", "url to a playlist or track")
+}
 
-	hasconf := viper.ReadInConfig() == nil
+// AddAllFlags will add all the flags provided in this package to the provided
+// command and will bind those flags with viper.
+func AddAllFlags(c *cobra.Command) {
+	AddConfigurationFlag(c)
+	AddLoggerFlags(c)
+	AddSoundCloudFlags(c)
 
-	if viper.GetBool("debug") {
-		logrus.SetLevel(logrus.DebugLevel)
-	}
-
-	// Delays the log for once the logger has been setup
-	if hasconf {
-		logrus.WithField("file", viper.ConfigFileUsed()).Debug("Found configuration file")
-	} else {
-		logrus.Debug("No configuration file found")
+	if err := viper.BindPFlags(c.PersistentFlags()); err != nil {
+		log.Fatal().Err(err).Msg("unable to bind flags")
 	}
 }

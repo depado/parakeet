@@ -6,19 +6,17 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Depado/parakeet/sc"
+	"github.com/Depado/soundcloud"
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/yanatan16/golang-soundcloud/soundcloud"
 )
 
 // Player holds the necessary data and structs to control the player
 type Player struct {
-	c         *sc.Client
-	tc        <-chan *soundcloud.Track
+	c         *soundcloud.Client
+	tc        <-chan soundcloud.Track
 	toggle    <-chan bool
 	next      chan<- bool
 	streamerc chan<- *StreamerFormat
@@ -33,7 +31,7 @@ type StreamerFormat struct {
 }
 
 // NewPlayer will return a new player
-func NewPlayer(c *sc.Client, tc <-chan *soundcloud.Track, toggle <-chan bool, next chan<- bool, streamerc chan<- *StreamerFormat) *Player {
+func NewPlayer(c *soundcloud.Client, tc <-chan soundcloud.Track, toggle <-chan bool, next chan<- bool, streamerc chan<- *StreamerFormat) *Player {
 	return &Player{
 		c:         c,
 		tc:        tc,
@@ -45,18 +43,23 @@ func NewPlayer(c *sc.Client, tc <-chan *soundcloud.Track, toggle <-chan bool, ne
 
 // StreamerFromTrack will retrieve a stream from the track and return the
 // streamer, format and total duration, as well as the source
-func (p *Player) StreamerFromTrack(t *soundcloud.Track) (*StreamerFormat, io.ReadCloser, error) {
+func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.ReadCloser, error) {
 	var (
-		err    error
-		resp   *http.Response
-		output *sc.StreamOutput
+		err  error
+		resp *http.Response
 	)
 
-	if output, err = p.c.Stream(t); err != nil {
+	ts, track, err := p.c.Track().FromTrack(&t, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("from track: %w", err)
+	}
+
+	url, err := ts.Stream(soundcloud.ProgressiveMP3)
+	if err != nil {
 		return nil, nil, fmt.Errorf("get stream URLs: %w", err)
 	}
 
-	if resp, err = http.Get(output.HTTPMp3128URL); err != nil { // nolint: bodyclose
+	if resp, err = http.Get(url); err != nil { // nolint: bodyclose
 		return nil, nil, fmt.Errorf("http request for mp3 failed: %w", err)
 	}
 
@@ -68,17 +71,17 @@ func (p *Player) StreamerFromTrack(t *soundcloud.Track) (*StreamerFormat, io.Rea
 	return &StreamerFormat{
 		Streamer:      streamer,
 		Format:        format,
-		TotalDuration: time.Duration(int64(t.Duration)) * time.Millisecond,
+		TotalDuration: time.Duration(int64(track.Duration)) * time.Millisecond,
 	}, resp.Body, nil
 }
 
 // Start will start the player, starting with the given track
-func (p *Player) Start(t *soundcloud.Track) error {
+func (p *Player) Start(t soundcloud.Track) error {
 	var sf *StreamerFormat
 	var s io.ReadCloser
 	var err error
 	if sf, s, err = p.StreamerFromTrack(t); err != nil {
-		return errors.Wrap(err, "unable to get streamer from track")
+		return fmt.Errorf("unable to get streamer from track: %w", err)
 	}
 	p.source = s
 	defer p.source.Close()

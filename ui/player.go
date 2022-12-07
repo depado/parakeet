@@ -1,14 +1,13 @@
 package ui
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/Depado/parakeet/player"
 	"github.com/Depado/parakeet/utils"
+	"github.com/Depado/soundcloud"
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
-	"github.com/yanatan16/golang-soundcloud/soundcloud"
 )
 
 // PlayerWidget is a set of widget (two paragraphs and a gauge) that represents
@@ -44,8 +43,8 @@ func NewPlayerWidget(height, width int) *PlayerWidget {
 }
 
 // Update will update the widget with the given information
-func (p *PlayerWidget) Update(playing *soundcloud.Track, stream *player.StreamerFormat, cursor time.Duration) {
-	p.Gauge.Label = fmt.Sprintf("%s - %s", playing.Title, playing.User.Username)
+func (p *PlayerWidget) Update(playing soundcloud.Track, stream *player.StreamerFormat, cursor time.Duration) {
+	p.Gauge.Label = " "
 	p.Gauge.Percent = int(float64(cursor) / float64(stream.TotalDuration.Round(time.Second)) * 100)
 	p.Total.Text = "] " + utils.FormatDuration(stream.TotalDuration)
 	p.Cursor.Text = utils.FormatDuration(cursor) + " [["

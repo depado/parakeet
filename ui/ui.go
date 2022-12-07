@@ -5,14 +5,14 @@ import (
 	"time"
 
 	"github.com/Depado/parakeet/utils"
+	"github.com/Depado/soundcloud"
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
-	"github.com/yanatan16/golang-soundcloud/soundcloud"
 )
 
 // NewTracklistWidget will return a new tracklist widget with the appropriate
 // content, as well as the currently playing track
-func NewTracklistWidget(height, width int, tt []*soundcloud.Track) *widgets.List {
+func NewTracklistWidget(height, width int, tt soundcloud.Tracks) *widgets.List {
 	tracklist := widgets.NewList()
 	tracklist.PaddingLeft = 1
 	tracklist.PaddingTop = 1
@@ -64,7 +64,7 @@ type InfoWidget struct {
 }
 
 // Update will update the information in the widget using the given parameters
-func (i *InfoWidget) Update(track *soundcloud.Track, duration time.Duration) {
+func (i *InfoWidget) Update(track soundcloud.Track, duration time.Duration) {
 	i.Text = fmt.Sprintf("   [Title:](fg:blue,mod:bold) %s\n"+
 		"  [Artist:](fg:blue,mod:bold) %s\n"+
 		"[Duration:](fg:blue,mod:bold) %s\n"+
@@ -72,8 +72,8 @@ func (i *InfoWidget) Update(track *soundcloud.Track, duration time.Duration) {
 		"          [♥%d](fg:red,mod:bold) [💬%d](fg:cyan)", track.Title,
 		track.User.Username,
 		utils.FormatDuration(duration),
-		track.PermalinkUrl,
-		track.FavoritingsCount,
+		track.PermalinkURL,
+		track.LikesCount,
 		track.CommentCount,
 	)
 }
