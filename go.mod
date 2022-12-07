@@ -3,7 +3,7 @@ module github.com/Depado/parakeet
 go 1.19
 
 require (
-	github.com/Depado/soundcloud v0.2.0
+	github.com/Depado/soundcloud v0.2.1
 	github.com/faiface/beep v1.1.0
 	github.com/gizak/termui/v3 v3.1.0
 	github.com/rs/zerolog v1.28.0

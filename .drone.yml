@@ -35,10 +35,10 @@ steps:
   - name: docker latest
     image: plugins/docker
     settings:
-      username: Depado
+      username: depado
       password:
         from_secret: ghcr_pat
-      repo: ghcr.io/Depado/parakeet
+      repo: ghcr.io/depado/parakeet
       registry: ghcr.io
       tags:
         - latest
@@ -53,10 +53,10 @@ steps:
   - name: docker tag
     image: plugins/docker
     settings:
-      username: Depado
+      username: depado
       password:
         from_secret: ghcr_pat
-      repo: ghcr.io/Depado/parakeet
+      repo: ghcr.io/depado/parakeet
       registry: ghcr.io
       tags:
         - latest

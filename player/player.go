@@ -56,7 +56,7 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 
 	url, err := ts.Stream(soundcloud.ProgressiveMP3)
 	if err != nil {
-		return nil, nil, fmt.Errorf("get stream URLs: %w", err)
+		return nil, nil, fmt.Errorf("get stream url: %w", err)
 	}
 
 	if resp, err = http.Get(url); err != nil { // nolint: bodyclose
