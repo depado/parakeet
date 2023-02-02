@@ -1,5 +1,5 @@
 # Build Step
-FROM golang:1.19-alpine
+FROM golang:1.20.0-alpine
 
 # Dependencies
 RUN apk update && apk add --no-cache upx make git alsa-lib-dev gcc libc-dev
