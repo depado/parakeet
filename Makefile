@@ -1,6 +1,5 @@
 .DEFAULT_GOAL := build
 
-export GO111MODULE=on
 export VERSION=$(shell git describe --abbrev=0 --tags 2> /dev/null || echo "0.1.0")
 export BUILD=$(shell git rev-parse HEAD 2> /dev/null || echo "undefined")
 export BUILDDATE=$(shell LANG=en_us_88591 date)
