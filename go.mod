@@ -2,7 +2,7 @@ module github.com/Depado/parakeet
 
 go 1.22.0
 
-toolchain go1.23.4
+toolchain go1.23.5
 
 require (
 	github.com/Depado/soundcloud v0.2.1
