@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Depado/soundcloud"
 	"github.com/faiface/beep/speaker"
 	"github.com/gizak/termui/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	"github.com/Depado/parakeet/cmd"
-	"github.com/Depado/parakeet/player"
-	"github.com/Depado/parakeet/ui"
-	"github.com/Depado/soundcloud"
+	"github.com/depado/parakeet/cmd"
+	"github.com/depado/parakeet/player"
+	"github.com/depado/parakeet/ui"
 )
 
 // Main command that will be run when no other command is provided on the

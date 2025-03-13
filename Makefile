@@ -4,13 +4,13 @@ export VERSION=$(shell git describe --abbrev=0 --tags 2> /dev/null || echo "0.1.
 export BUILD=$(shell git rev-parse HEAD 2> /dev/null || echo "undefined")
 export BUILDDATE=$(shell LANG=en_us_88591 date)
 BINARY=parakeet
-LDFLAGS=-ldflags "-X 'github.com/Depado/parakeet/cmd.Version=$(VERSION)' \
-		-X 'github.com/Depado/parakeet/cmd.Build=$(BUILD)' \
-		-X 'github.com/Depado/parakeet/cmd.Time=$(BUILDDATE)' -s -w"
-PACKEDFLAGS=-ldflags "-X 'github.com/Depado/parakeet/cmd.Version=$(VERSION)' \
-		-X 'github.com/Depado/parakeet/cmd.Build=$(BUILD)' \
-		-X 'github.com/Depado/parakeet/cmd.Time=$(BUILDDATE)' \
-		-X 'github.com/Depado/parakeet/cmd.Packer=upx --best --lzma' -s -w"
+LDFLAGS=-ldflags "-X 'github.com/depado/parakeet/cmd.Version=$(VERSION)' \
+		-X 'github.com/depado/parakeet/cmd.Build=$(BUILD)' \
+		-X 'github.com/depado/parakeet/cmd.Time=$(BUILDDATE)' -s -w"
+PACKEDFLAGS=-ldflags "-X 'github.com/depado/parakeet/cmd.Version=$(VERSION)' \
+		-X 'github.com/depado/parakeet/cmd.Build=$(BUILD)' \
+		-X 'github.com/depado/parakeet/cmd.Time=$(BUILDDATE)' \
+		-X 'github.com/depado/parakeet/cmd.Packer=upx --best --lzma' -s -w"
 
 .PHONY: help
 help: ## Display help text for makefile
@@ -29,17 +29,13 @@ packed: ## Build a packed version of the binary
 	go build $(PACKEDFLAGS) -o $(BINARY)
 	upx --best --lzma $(BINARY)
 
-.PHONY: docker
-docker: ## Build the docker image
-	docker build -t $(BINARY):latest -t $(BINARY):$(BUILD) -f Dockerfile .
-
 .PHONY: release
 release: ## Create a new release on Github
 	goreleaser
 
 .PHONY: snapshot
 snapshot: ## Create a new snapshot release
-	goreleaser --snapshot --rm-dist
+	goreleaser --snapshot --clean
 
 .PHONY: lint
 lint: ## Runs the linter

@@ -5,10 +5,9 @@
   [![forthebadge](https://forthebadge.com/images/badges/made-with-go.svg)](https://forthebadge.com)[![forthebadge](https://forthebadge.com/images/badges/built-with-love.svg)](https://forthebadge.com)[![forthebadge](https://forthebadge.com/images/badges/uses-badges.svg)](https://forthebadge.com)
 
   ![Go Version](https://img.shields.io/badge/Go%20Version-latest-brightgreen.svg)
-  [![Go Report Card](https://goreportcard.com/badge/github.com/Depado/parakeet)](https://goreportcard.com/report/github.com/Depado/parakeet)
-  [![Build Status](https://drone.depa.do/api/badges/Depado/parakeet/status.svg)](https://drone.depa.do/Depado/parakeet)
-  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Depado/parakeet/blob/master/LICENSE)
-  [![Say Thanks!](https://img.shields.io/badge/Say%20Thanks-!-1EAEDB.svg)](https://saythanks.io/to/Depado)
+  [![Go Report Card](https://goreportcard.com/badge/github.com/depado/parakeet)](https://goreportcard.com/report/github.com/depado/parakeet)
+  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/depado/parakeet/blob/master/LICENSE)
+  [![Say Thanks!](https://img.shields.io/badge/Say%20Thanks-!-1EAEDB.svg)](https://saythanks.io/to/depado)
 
   SoundCloud player in your terminal
 </h2>
@@ -31,13 +30,13 @@ Currently, parakeet has some limitations:
 From source:
 
 ```sh
-$ go get github.com/Depado/parakeet
-$ cd $GOPATH/src/github.com/Depado/parakeet
+$ go get github.com/depado/parakeet
+$ cd $GOPATH/src/github.com/depado/parakeet
 $ make install
 ```
 
 Alternatively you can download the binary release of parakeet on the 
-[releases page](https://github.com/Depado/parakeet/releases).
+[releases page](https://github.com/depado/parakeet/releases).
 
 This project uses [beep](https://github.com/faiface/beep) which in turn uses 
 [oto](https://github.com/hajimehoshi/oto) so make sure to check the 
