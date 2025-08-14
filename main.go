@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Depado/soundcloud"
 	"github.com/faiface/beep/speaker"
 	"github.com/gizak/termui/v3"
 	"github.com/rs/zerolog"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/depado/parakeet/cmd"
 	"github.com/depado/parakeet/player"
+	"github.com/depado/parakeet/soundcloud" // Neue lokale soundcloud package
 	"github.com/depado/parakeet/ui"
 )
 
@@ -28,19 +28,22 @@ var rootCmd = &cobra.Command{
 		}
 		// Logger
 		l := cmd.NewLogger(c)
-		// Soundcloud client
-		scc, err := soundcloud.NewAutoIDClient()
-		if err != nil {
-			l.Fatal().Err(err).Msg("unable to initialize soundcloud client")
+		
+		// Check for OAuth token
+		if c.AuthToken == "" {
+			l.Fatal().Msg("OAuth token required. Set PARAKEET_AUTH_TOKEN or use --auth_token flag")
 		}
+		
+		// Soundcloud client mit OAuth
+		scc := soundcloud.NewClient(c.AuthToken)
 		run(c, l, scc)
 	},
 }
 
 func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	l.Debug().Str("build", cmd.Build).Str("version", cmd.Version).Msg("starting parakeet")
-	if c.UserID == "" && c.URL == "" {
-		l.Fatal().Msg("no user id or url, nothing to do")
+	if c.URL == "" {
+		l.Fatal().Msg("no playlist URL provided, nothing to do")
 	}
 
 	pls, err := scc.Playlist().FromURL(c.URL)

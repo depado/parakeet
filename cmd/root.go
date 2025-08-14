@@ -21,7 +21,8 @@ func AddConfigurationFlag(c *cobra.Command) {
 
 // AddSoundCloudFlags adds support for SoundCloud related flags.
 func AddSoundCloudFlags(c *cobra.Command) {
-	c.PersistentFlags().StringP("user_id", "i", "", "user id to use")
+	c.PersistentFlags().StringP("user_id", "i", "", "user id to use (optional for OAuth)")
+	c.PersistentFlags().StringP("auth_token", "t", "", "OAuth authentication token")
 	c.PersistentFlags().StringP("url", "u", "", "url to a playlist or track")
 }
 

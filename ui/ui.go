@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Depado/soundcloud"
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 
+	"github.com/depado/parakeet/soundcloud" // GEÄNDERT: lokale soundcloud package
 	"github.com/depado/parakeet/utils"
 )
 

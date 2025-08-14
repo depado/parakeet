@@ -6,17 +6,18 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Depado/soundcloud"
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
 	"github.com/sirupsen/logrus"
+
+	"github.com/depado/parakeet/soundcloud" // GEÄNDERT: lokale soundcloud package
 )
 
 // Player holds the necessary data and structs to control the player
 type Player struct {
-	c         *soundcloud.Client
-	tc        <-chan soundcloud.Track
+	c         *soundcloud.Client // GEÄNDERT: neuer Client type
+	tc        <-chan soundcloud.Track // GEÄNDERT: neuer Track type
 	toggle    <-chan bool
 	next      chan<- bool
 	streamerc chan<- *StreamerFormat
@@ -49,6 +50,7 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 		resp *http.Response
 	)
 
+	// GEÄNDERT: Verwende neue Client API
 	ts, track, err := p.c.Track().FromTrack(&t, false)
 	if err != nil {
 		return nil, nil, fmt.Errorf("from track: %w", err)
@@ -121,6 +123,5 @@ func (p *Player) Start(t soundcloud.Track) error {
 			ctrl.Paused = !ctrl.Paused
 			speaker.Unlock()
 		}
-
 	}
 }
