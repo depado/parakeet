@@ -6,9 +6,9 @@ import (
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 
-	"github.com/depado/parakeet/player"
-	"github.com/depado/parakeet/soundcloud" // GEÄNDERT: lokale soundcloud package
-	"github.com/depado/parakeet/utils"
+	"github.com/E-Geraet/parakeet/player"
+	"github.com/E-Geraet/parakeet/soundcloud" // GEÄNDERT: lokale soundcloud package
+	"github.com/E-Geraet/parakeet/utils"
 )
 
 // PlayerWidget is a set of widget (two paragraphs and a gauge) that represents

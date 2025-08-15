@@ -10,10 +10,10 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
-	"github.com/depado/parakeet/cmd"
-	"github.com/depado/parakeet/player"
-	"github.com/depado/parakeet/soundcloud" // Neue lokale soundcloud package
-	"github.com/depado/parakeet/ui"
+	"github.com/E-Geraet/parakeet/cmd"
+	"github.com/E-Geraet/parakeet/player"
+	"github.com/E-Geraet/parakeet/soundcloud" // Neue lokale soundcloud package
+	"github.com/E-Geraet/parakeet/ui"
 )
 
 // Main command that will be run when no other command is provided on the

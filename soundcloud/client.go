@@ -51,7 +51,7 @@ func NewClient(authToken string) *Client {
 			Timeout: 30 * time.Second,
 		},
 		authToken: strings.TrimSpace(authToken),
-		baseURL:   "https://api-v2.soundcloud.com",
+		baseURL:   "https://api-v2.soundcloud.com", // API v2 für OAuth
 	}
 }
 
@@ -89,24 +89,52 @@ type PlaylistService struct {
 	client *Client
 }
 
-// FromURL gets a playlist from URL
+// FromURL gets a playlist from URL using SoundCloud's resolve endpoint
 func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
-	// Extract playlist ID from URL
-	playlistID := extractPlaylistID(url)
-	
-	req, err := ps.client.makeRequest("GET", "/playlists/"+playlistID, nil)
+	// Step 1: Resolve URL to get numeric playlist ID
+	req, err := ps.client.makeRequest("GET", "/resolve?url="+url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create resolve request: %w", err)
 	}
 
 	resp, err := ps.client.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
+		return nil, fmt.Errorf("failed to make resolve request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed: status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("resolve API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	// Step 2: Extract playlist ID from resolve response
+	var resolveData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&resolveData); err != nil {
+		return nil, fmt.Errorf("failed to decode resolve response: %w", err)
+	}
+
+	idFloat, ok := resolveData["id"].(float64)
+	if !ok {
+		return nil, fmt.Errorf("could not extract numeric playlist ID from resolve response")
+	}
+	playlistID := fmt.Sprintf("%.0f", idFloat)
+
+	// Step 3: Get full playlist by numeric ID
+	req, err = ps.client.makeRequest("GET", "/playlists/"+playlistID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create playlist request: %w", err)
+	}
+
+	resp, err = ps.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make playlist request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("playlist API request failed: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var playlist Playlist
@@ -159,7 +187,8 @@ func (tw *TrackWrapper) Stream(quality StreamQuality) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("API request failed: status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("stream API request failed: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var streamResp struct {
@@ -174,13 +203,42 @@ func (tw *TrackWrapper) Stream(quality StreamQuality) (string, error) {
 
 // extractPlaylistID extracts playlist ID from URL
 func extractPlaylistID(url string) string {
-	// Simple extraction logic - enhance as needed
+	// Handle SoundCloud playlist URLs like:
+	// https://soundcloud.com/user/sets/playlist-name
 	parts := strings.Split(url, "/")
 	for i, part := range parts {
 		if part == "sets" && i+1 < len(parts) {
+			// Return the playlist slug, not just the last part
 			return parts[i+1]
 		}
 	}
 	return parts[len(parts)-1]
+}
+
+// resolvePlaylistURL resolves a SoundCloud URL to get the actual playlist data
+func (ps *PlaylistService) resolvePlaylistURL(url string) (*Playlist, error) {
+	// Use the resolve endpoint to get playlist data from URL
+	req, err := ps.client.makeRequest("GET", "/resolve?url="+url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resolve request: %w", err)
+	}
+
+	resp, err := ps.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make resolve request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("resolve API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var playlist Playlist
+	if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
+		return nil, fmt.Errorf("failed to decode resolve response: %w", err)
+	}
+
+	return &playlist, nil
 }
 

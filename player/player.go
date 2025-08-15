@@ -11,7 +11,7 @@ import (
 	"github.com/faiface/beep/speaker"
 	"github.com/sirupsen/logrus"
 
-	"github.com/depado/parakeet/soundcloud" // GEÄNDERT: lokale soundcloud package
+	"github.com/E-Geraet/parakeet/soundcloud" // GEÄNDERT: lokale soundcloud package
 )
 
 // Player holds the necessary data and structs to control the player
