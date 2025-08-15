@@ -20,6 +20,7 @@ type Player struct {
 	toggle    <-chan bool
 	next      chan<- bool
 	streamerc chan<- *StreamerFormat
+	positionc chan<- time.Duration
 	source    io.ReadCloser
 }
 
@@ -28,15 +29,17 @@ type StreamerFormat struct {
 	Streamer      beep.StreamSeekCloser
 	Format        beep.Format
 	TotalDuration time.Duration
+	Track         soundcloud.Track
 }
 
 // NewPlayer will return a new player
-func NewPlayer(c *soundcloud.Client, tc <-chan soundcloud.Track, toggle <-chan bool, next chan<- bool, streamerc chan<- *StreamerFormat) *Player {
+func NewPlayer(c *soundcloud.Client, tc <-chan soundcloud.Track, toggle <-chan bool, next chan<- bool, streamerc chan<- *StreamerFormat, positionc chan<- time.Duration) *Player {
 	return &Player{
 		c:         c,
 		tc:        tc,
 		toggle:    toggle,
 		streamerc: streamerc,
+		positionc: positionc,
 		next:      next,
 	}
 }
@@ -72,6 +75,7 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 		Streamer:      streamer,
 		Format:        format,
 		TotalDuration: time.Duration(int64(track.Duration)) * time.Millisecond,
+		Track:         t,
 	}, resp.Body, nil
 }
 
@@ -80,6 +84,9 @@ func (p *Player) Start(t soundcloud.Track) error {
 	var sf *StreamerFormat
 	var s io.ReadCloser
 	var err error
+	var startTime time.Time
+	var pausedDuration time.Duration
+
 	if sf, s, err = p.StreamerFromTrack(t); err != nil {
 		return fmt.Errorf("unable to get streamer from track: %w", err)
 	}
@@ -91,10 +98,16 @@ func (p *Player) Start(t soundcloud.Track) error {
 	}
 
 	ctrl := &beep.Ctrl{Streamer: sf.Streamer, Paused: false}
+	startTime = time.Now()
+
 	speaker.Play(beep.Seq(ctrl, beep.Callback(func() {
 		p.next <- true
 	})))
 	p.streamerc <- sf
+
+	// Position ticker for sending position updates
+	positionTicker := time.NewTicker(100 * time.Millisecond)
+	defer positionTicker.Stop()
 
 	for {
 		select {
@@ -112,15 +125,32 @@ func (p *Player) Start(t soundcloud.Track) error {
 			p.source = s
 			ctrl.Streamer = sf.Streamer
 			ctrl.Paused = false
+			startTime = time.Now()
+			pausedDuration = 0
 			speaker.Play(beep.Seq(ctrl, beep.Callback(func() {
 				p.next <- true
 			})))
 			p.streamerc <- sf
 		case <-p.toggle:
 			speaker.Lock()
+			wasPaused := ctrl.Paused
 			ctrl.Paused = !ctrl.Paused
+			if wasPaused {
+				// Resuming - reset start time accounting for paused duration
+				startTime = time.Now().Add(-pausedDuration)
+			} else {
+				// Pausing - calculate total paused duration so far
+				pausedDuration = time.Since(startTime)
+			}
 			speaker.Unlock()
+		case <-positionTicker.C:
+			// Send current position if not paused
+			if !ctrl.Paused {
+				currentPos := time.Since(startTime)
+				if currentPos < sf.TotalDuration {
+					p.positionc <- currentPos
+				}
+			}
 		}
-
 	}
 }
