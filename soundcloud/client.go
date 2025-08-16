@@ -22,6 +22,21 @@ type User struct {
 	Username string `json:"username"`
 }
 
+// Media and Transcoding structures for new SoundCloud API
+type Media struct {
+	Transcodings []Transcoding `json:"transcodings"`
+}
+
+type Transcoding struct {
+	URL     string `json:"url"`
+	Preset  string `json:"preset"`
+	Quality string `json:"quality"`
+	Format  struct {
+		Protocol string `json:"protocol"`
+		MimeType string `json:"mime_type"`
+	} `json:"format"`
+}
+
 // Track represents a SoundCloud track
 type Track struct {
 	ID           int    `json:"id"`
@@ -30,9 +45,10 @@ type Track struct {
 	PermalinkURL string `json:"permalink_url"`
 	LikesCount   int    `json:"likes_count"`
 	CommentCount int    `json:"comment_count"`
-	StreamURL    string `json:"stream_url"`    // Direct stream URL if available
-	DownloadURL  string `json:"download_url"`  // Download URL fallback
+	StreamURL    string `json:"stream_url"`   // Direct stream URL if available
+	DownloadURL  string `json:"download_url"` // Download URL fallback
 	User         User   `json:"user"`
+	Media        Media  `json:"media"`
 }
 
 // Tracks is a slice of Track
@@ -64,10 +80,10 @@ func (c *Client) makeRequest(method, endpoint string, body io.Reader) (*http.Req
 	if err != nil {
 		return nil, err
 	}
-	
+
 	req.Header.Set("Authorization", "OAuth "+c.authToken)
 	req.Header.Set("User-Agent", "SoundCloud-Terminal-Player/1.0")
-	
+
 	return req, nil
 }
 
@@ -93,7 +109,6 @@ type PlaylistService struct {
 
 // FromURL gets a playlist from URL using SoundCloud's resolve endpoint
 func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
-	// Step 1: Resolve URL to get numeric playlist ID
 	req, err := ps.client.makeRequest("GET", "/resolve?url="+url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolve request: %w", err)
@@ -110,7 +125,6 @@ func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
 		return nil, fmt.Errorf("resolve API request failed: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	// Step 2: Extract playlist ID from resolve response
 	var resolveData map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&resolveData); err != nil {
 		return nil, fmt.Errorf("failed to decode resolve response: %w", err)
@@ -122,7 +136,6 @@ func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
 	}
 	playlistID := fmt.Sprintf("%.0f", idFloat)
 
-	// Step 3: Get full playlist by numeric ID
 	req, err = ps.client.makeRequest("GET", "/playlists/"+playlistID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create playlist request: %w", err)
@@ -177,70 +190,45 @@ const (
 
 // Stream gets the streaming URL for a track
 func (tw *TrackWrapper) Stream(quality StreamQuality) (string, error) {
-	// Try different streaming endpoints that SoundCloud uses
-	endpoints := []string{
-		fmt.Sprintf("/tracks/%d/streams", tw.track.ID),
-		fmt.Sprintf("/tracks/%d/stream", tw.track.ID),
-		fmt.Sprintf("/i1/tracks/%d/streams", tw.track.ID),
-	}
-	
-	for _, endpoint := range endpoints {
-		req, err := tw.client.makeRequest("GET", endpoint, nil)
-		if err != nil {
-			continue
-		}
+	// Prefer progressive MP3 if available
+	for _, t := range tw.track.Media.Transcodings {
+		if t.Format.Protocol == "progressive" && strings.Contains(t.Format.MimeType, "mpeg") {
+			// Second request: fetch final URL
+			endpoint := strings.TrimPrefix(t.URL, tw.client.baseURL)
+			req, err := tw.client.makeRequest("GET", endpoint, nil)
+			if err != nil {
+				continue
+			}
 
-		resp, err := tw.client.httpClient.Do(req)
-		if err != nil {
-			continue
-		}
-		defer resp.Body.Close()
+			resp, err := tw.client.httpClient.Do(req)
+			if err != nil {
+				continue
+			}
+			defer resp.Body.Close()
 
-		if resp.StatusCode == http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			
-			// Try to parse as different response formats
-			var streamResp struct {
-				URL string `json:"url"`
-			}
-			if err := json.Unmarshal(body, &streamResp); err == nil && streamResp.URL != "" {
-				return streamResp.URL, nil
-			}
-			
-			// Try alternative format
-			var streamResp2 struct {
-				HTTPMp3128URL string `json:"http_mp3_128_url"`
-			}
-			if err := json.Unmarshal(body, &streamResp2); err == nil && streamResp2.HTTPMp3128URL != "" {
-				return streamResp2.HTTPMp3128URL, nil
-			}
-			
-			// Try progressive streams format
-			var progressiveResp map[string]interface{}
-			if err := json.Unmarshal(body, &progressiveResp); err == nil {
-				if url, ok := progressiveResp["url"].(string); ok && url != "" {
-					return url, nil
+			if resp.StatusCode == http.StatusOK {
+				var data struct {
+					URL string `json:"url"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && data.URL != "" {
+					return data.URL, nil
 				}
 			}
 		}
 	}
-	
-	// If all streaming endpoints fail, try to extract from track data itself
+
+	// fallback
 	if tw.track.StreamURL != "" {
 		return tw.track.StreamURL, nil
 	}
-	
 	return "", fmt.Errorf("no streaming URL found for track %d", tw.track.ID)
 }
 
 // extractPlaylistID extracts playlist ID from URL
 func extractPlaylistID(url string) string {
-	// Handle SoundCloud playlist URLs like:
-	// https://soundcloud.com/user/sets/playlist-name
 	parts := strings.Split(url, "/")
 	for i, part := range parts {
 		if part == "sets" && i+1 < len(parts) {
-			// Return the playlist slug, not just the last part
 			return parts[i+1]
 		}
 	}
@@ -249,7 +237,6 @@ func extractPlaylistID(url string) string {
 
 // resolvePlaylistURL resolves a SoundCloud URL to get the actual playlist data
 func (ps *PlaylistService) resolvePlaylistURL(url string) (*Playlist, error) {
-	// Use the resolve endpoint to get playlist data from URL
 	req, err := ps.client.makeRequest("GET", "/resolve?url="+url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolve request: %w", err)
@@ -273,3 +260,4 @@ func (ps *PlaylistService) resolvePlaylistURL(url string) (*Playlist, error) {
 
 	return &playlist, nil
 }
+
