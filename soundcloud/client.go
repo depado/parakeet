@@ -30,6 +30,8 @@ type Track struct {
 	PermalinkURL string `json:"permalink_url"`
 	LikesCount   int    `json:"likes_count"`
 	CommentCount int    `json:"comment_count"`
+	StreamURL    string `json:"stream_url"`    // Direct stream URL if available
+	DownloadURL  string `json:"download_url"`  // Download URL fallback
 	User         User   `json:"user"`
 }
 
@@ -175,30 +177,60 @@ const (
 
 // Stream gets the streaming URL for a track
 func (tw *TrackWrapper) Stream(quality StreamQuality) (string, error) {
-	req, err := tw.client.makeRequest("GET", fmt.Sprintf("/tracks/%d/stream", tw.track.ID), nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
+	// Try different streaming endpoints that SoundCloud uses
+	endpoints := []string{
+		fmt.Sprintf("/tracks/%d/streams", tw.track.ID),
+		fmt.Sprintf("/tracks/%d/stream", tw.track.ID),
+		fmt.Sprintf("/i1/tracks/%d/streams", tw.track.ID),
 	}
+	
+	for _, endpoint := range endpoints {
+		req, err := tw.client.makeRequest("GET", endpoint, nil)
+		if err != nil {
+			continue
+		}
 
-	resp, err := tw.client.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
+		resp, err := tw.client.httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("stream API request failed: status %d, body: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			
+			// Try to parse as different response formats
+			var streamResp struct {
+				URL string `json:"url"`
+			}
+			if err := json.Unmarshal(body, &streamResp); err == nil && streamResp.URL != "" {
+				return streamResp.URL, nil
+			}
+			
+			// Try alternative format
+			var streamResp2 struct {
+				HTTPMp3128URL string `json:"http_mp3_128_url"`
+			}
+			if err := json.Unmarshal(body, &streamResp2); err == nil && streamResp2.HTTPMp3128URL != "" {
+				return streamResp2.HTTPMp3128URL, nil
+			}
+			
+			// Try progressive streams format
+			var progressiveResp map[string]interface{}
+			if err := json.Unmarshal(body, &progressiveResp); err == nil {
+				if url, ok := progressiveResp["url"].(string); ok && url != "" {
+					return url, nil
+				}
+			}
+		}
 	}
-
-	var streamResp struct {
-		URL string `json:"url"`
+	
+	// If all streaming endpoints fail, try to extract from track data itself
+	if tw.track.StreamURL != "" {
+		return tw.track.StreamURL, nil
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&streamResp); err != nil {
-		return "", fmt.Errorf("failed to decode stream response: %w", err)
-	}
-
-	return streamResp.URL, nil
+	
+	return "", fmt.Errorf("no streaming URL found for track %d", tw.track.ID)
 }
 
 // extractPlaylistID extracts playlist ID from URL
@@ -241,4 +273,3 @@ func (ps *PlaylistService) resolvePlaylistURL(url string) (*Playlist, error) {
 
 	return &playlist, nil
 }
-
