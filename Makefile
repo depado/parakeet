@@ -17,7 +17,7 @@ help: ## Display help text for makefile
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
-build: ## Build
+build: ## Build in current directory
 	go build $(LDFLAGS) -o $(BINARY)
 
 .PHONY: tmp
@@ -28,6 +28,11 @@ tmp: ## Build and output the binary in /tmp
 packed: ## Build a packed version of the binary
 	go build $(PACKEDFLAGS) -o $(BINARY)
 	upx --best --lzma $(BINARY)
+
+.PHONY: install
+install: build ## Install binary to /usr/local/bin
+	sudo cp $(BINARY) /usr/local/bin/
+	@echo "Installed $(BINARY) to /usr/local/bin"
 
 .PHONY: release
 release: ## Create a new release on Github
@@ -49,3 +54,4 @@ test: ## Run the test suite
 clean: ## Remove the binary
 	if [ -f $(BINARY) ] ; then rm $(BINARY) ; fi
 	if [ -f coverage.txt ] ; then rm coverage.txt ; fi
+
