@@ -11,13 +11,13 @@ import (
 	"github.com/faiface/beep/speaker"
 	"github.com/sirupsen/logrus"
 
-	"github.com/E-Geraet/parakeet/soundcloud" // GEÄNDERT: lokale soundcloud package
+	"github.com/E-Geraet/parakeet/soundcloud"
 )
 
 // Player holds the necessary data and structs to control the player
 type Player struct {
-	c         *soundcloud.Client // GEÄNDERT: neuer Client type
-	tc        <-chan soundcloud.Track // GEÄNDERT: neuer Track type
+	c         *soundcloud.Client
+	tc        <-chan soundcloud.Track
 	toggle    <-chan bool
 	next      chan<- bool
 	streamerc chan<- *StreamerFormat
@@ -50,7 +50,7 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 		resp *http.Response
 	)
 
-	// GEÄNDERT: Verwende neue Client API
+	// Get track service and fetch full track details with media transcodings
 	ts, track, err := p.c.Track().FromTrack(&t, false)
 	if err != nil {
 		return nil, nil, fmt.Errorf("from track: %w", err)
@@ -61,13 +61,22 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 		return nil, nil, fmt.Errorf("get stream url: %w", err)
 	}
 
+	logrus.WithField("url", url).Debug("Fetching stream from URL")
+
 	if resp, err = http.Get(url); err != nil { // nolint: bodyclose
 		return nil, nil, fmt.Errorf("http request for mp3 failed: %w", err)
 	}
 
+	// Check if the response is valid
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("http request failed with status: %d", resp.StatusCode)
+	}
+
 	streamer, format, err := mp3.Decode(resp.Body)
 	if err != nil {
-		logrus.WithError(err).Fatal("Unable to decode MP3")
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("unable to decode MP3: %w", err)
 	}
 
 	return &StreamerFormat{
@@ -101,7 +110,9 @@ func (p *Player) Start(t soundcloud.Track) error {
 	for {
 		select {
 		case track := <-p.tc:
+			logrus.WithField("track", track.Title).Info("Switching to new track")
 			if sf, s, err = p.StreamerFromTrack(track); err != nil {
+				logrus.WithError(err).Error("Failed to get streamer for track, skipping")
 				// If an error occurs, go to the next track
 				p.streamerc <- nil
 				p.next <- true

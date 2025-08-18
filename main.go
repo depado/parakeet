@@ -12,7 +12,7 @@ import (
 
 	"github.com/E-Geraet/parakeet/cmd"
 	"github.com/E-Geraet/parakeet/player"
-	"github.com/E-Geraet/parakeet/soundcloud" // Neue lokale soundcloud package
+	"github.com/E-Geraet/parakeet/soundcloud"
 	"github.com/E-Geraet/parakeet/ui"
 )
 
@@ -46,6 +46,7 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 		l.Fatal().Msg("no playlist URL provided, nothing to do")
 	}
 
+	l.Info().Str("url", c.URL).Msg("fetching playlist")
 	pls, err := scc.Playlist().FromURL(c.URL)
 	if err != nil {
 		l.Fatal().Err(err).Msg("unable to get playlists")
@@ -55,6 +56,8 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	if err != nil {
 		l.Fatal().Err(err).Msg("unable to retrieve tracks")
 	}
+
+	l.Info().Int("tracks", len(pl.Tracks)).Msg("playlist loaded successfully")
 
 	playingindex := 0
 	playing := pl.Tracks[playingindex]
@@ -67,12 +70,17 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	nextchan := make(chan bool)
 	player := player.NewPlayer(scc, trackchan, togglechan, nextchan, streamerchan)
 
+	l.Info().Str("track", playing.Title).Msg("starting player with first track")
 	go func() {
 		if err = player.Start(playing); err != nil {
 			l.Fatal().Err(err).Msg("unable to start player")
 		}
 	}()
 	current = <-streamerchan
+
+	if current == nil {
+		l.Fatal().Msg("failed to start initial track")
+	}
 
 	// Initialize UI
 	if err := termui.Init(); err != nil {
@@ -121,8 +129,13 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 				playingindex = tracklist.SelectedRow
 				playing = pl.Tracks[playingindex]
 				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
+				l.Info().Str("track", playing.Title).Msg("user selected new track")
 				trackchan <- playing
 				current = <-streamerchan
+				if current == nil {
+					l.Warn().Str("track", playing.Title).Msg("failed to load selected track, trying next")
+					nextchan <- true
+				}
 			case "<Down>":
 				tracklist.ScrollDown()
 			case "<Up>":
@@ -130,6 +143,7 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 			case "<Space>":
 				togglechan <- true
 			case "q", "<C-c>":
+				l.Info().Msg("user requested exit")
 				return
 			case "<Resize>":
 				payload := e.Payload.(termui.Resize)
@@ -153,8 +167,13 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 			}
 			playing = pl.Tracks[playingindex]
 			tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
+			l.Info().Str("track", playing.Title).Msg("auto-advancing to next track")
 			trackchan <- playing
 			current = <-streamerchan
+			if current == nil {
+				l.Warn().Str("track", playing.Title).Msg("failed to load next track, trying again")
+				// Will trigger another next automatically
+			}
 		}
 	}
 }

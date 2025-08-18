@@ -4,13 +4,13 @@ export VERSION=$(shell git describe --abbrev=0 --tags 2> /dev/null || echo "0.1.
 export BUILD=$(shell git rev-parse HEAD 2> /dev/null || echo "undefined")
 export BUILDDATE=$(shell LANG=en_us_88591 date)
 BINARY=parakeet
-LDFLAGS=-ldflags "-X 'github.com/depado/parakeet/cmd.Version=$(VERSION)' \
-		-X 'github.com/depado/parakeet/cmd.Build=$(BUILD)' \
-		-X 'github.com/depado/parakeet/cmd.Time=$(BUILDDATE)' -s -w"
-PACKEDFLAGS=-ldflags "-X 'github.com/depado/parakeet/cmd.Version=$(VERSION)' \
-		-X 'github.com/depado/parakeet/cmd.Build=$(BUILD)' \
-		-X 'github.com/depado/parakeet/cmd.Time=$(BUILDDATE)' \
-		-X 'github.com/depado/parakeet/cmd.Packer=upx --best --lzma' -s -w"
+LDFLAGS=-ldflags "-X 'github.com/E-Geraet/parakeet/cmd.Version=$(VERSION)' \
+		-X 'github.com/E-Geraet/parakeet/cmd.Build=$(BUILD)' \
+		-X 'github.com/E-Geraet/parakeet/cmd.Time=$(BUILDDATE)' -s -w"
+PACKEDFLAGS=-ldflags "-X 'github.com/E-Geraet/parakeet/cmd.Version=$(VERSION)' \
+		-X 'github.com/E-Geraet/parakeet/cmd.Build=$(BUILD)' \
+		-X 'github.com/E-Geraet/parakeet/cmd.Time=$(BUILDDATE)' \
+		-X 'github.com/E-Geraet/parakeet/cmd.Packer=upx --best --lzma' -s -w"
 
 .PHONY: help
 help: ## Display help text for makefile

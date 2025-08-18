@@ -176,9 +176,32 @@ type TrackWrapper struct {
 	client *Client
 }
 
-// FromTrack creates a track wrapper from a track
+// FromTrack creates a track wrapper from a track - but first fetches full track details
 func (ts *TrackService) FromTrack(t *Track, progressive bool) (*TrackWrapper, *Track, error) {
-	return &TrackWrapper{track: t, client: ts.client}, t, nil
+	// Step 1: Fetch full track details to get media.transcodings
+	trackID := fmt.Sprintf("%d", t.ID)
+	req, err := ts.client.makeRequest("GET", "/tracks/"+trackID, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create track request: %w", err)
+	}
+
+	resp, err := ts.client.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to make track request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, nil, fmt.Errorf("track API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var fullTrack Track
+	if err := json.NewDecoder(resp.Body).Decode(&fullTrack); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode track: %w", err)
+	}
+
+	return &TrackWrapper{track: &fullTrack, client: ts.client}, &fullTrack, nil
 }
 
 // StreamQuality represents stream quality
@@ -188,12 +211,12 @@ const (
 	ProgressiveMP3 StreamQuality = "progressive_mp3"
 )
 
-// Stream gets the streaming URL for a track
+// Stream gets the streaming URL for a track using the same logic as the debugger
 func (tw *TrackWrapper) Stream(quality StreamQuality) (string, error) {
-	// Prefer progressive MP3 if available
+	// Look for progressive MP3 transcoding (exactly like the debugger)
 	for _, t := range tw.track.Media.Transcodings {
 		if t.Format.Protocol == "progressive" && strings.Contains(t.Format.MimeType, "mpeg") {
-			// Second request: fetch final URL
+			// Second request to get the final stream URL
 			endpoint := strings.TrimPrefix(t.URL, tw.client.baseURL)
 			req, err := tw.client.makeRequest("GET", endpoint, nil)
 			if err != nil {
@@ -207,57 +230,23 @@ func (tw *TrackWrapper) Stream(quality StreamQuality) (string, error) {
 			defer resp.Body.Close()
 
 			if resp.StatusCode == http.StatusOK {
-				var data struct {
-					URL string `json:"url"`
-				}
-				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil && data.URL != "" {
-					return data.URL, nil
+				var data map[string]interface{}
+				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil {
+					if finalURL, ok := data["url"].(string); ok && finalURL != "" {
+						return finalURL, nil
+					}
 				}
 			}
 		}
 	}
 
-	// fallback
+	// Fallback options (same as before)
 	if tw.track.StreamURL != "" {
 		return tw.track.StreamURL, nil
 	}
+	if tw.track.DownloadURL != "" {
+		return tw.track.DownloadURL, nil
+	}
+
 	return "", fmt.Errorf("no streaming URL found for track %d", tw.track.ID)
 }
-
-// extractPlaylistID extracts playlist ID from URL
-func extractPlaylistID(url string) string {
-	parts := strings.Split(url, "/")
-	for i, part := range parts {
-		if part == "sets" && i+1 < len(parts) {
-			return parts[i+1]
-		}
-	}
-	return parts[len(parts)-1]
-}
-
-// resolvePlaylistURL resolves a SoundCloud URL to get the actual playlist data
-func (ps *PlaylistService) resolvePlaylistURL(url string) (*Playlist, error) {
-	req, err := ps.client.makeRequest("GET", "/resolve?url="+url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create resolve request: %w", err)
-	}
-
-	resp, err := ps.client.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make resolve request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("resolve API request failed: status %d, body: %s", resp.StatusCode, string(body))
-	}
-
-	var playlist Playlist
-	if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
-		return nil, fmt.Errorf("failed to decode resolve response: %w", err)
-	}
-
-	return &playlist, nil
-}
-
