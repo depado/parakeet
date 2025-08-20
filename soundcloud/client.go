@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Client represents the new OAuth-based SoundCloud client
+// Client represents the OAuth-based SoundCloud client
 type Client struct {
 	httpClient *http.Client
 	authToken  string
@@ -22,7 +22,7 @@ type User struct {
 	Username string `json:"username"`
 }
 
-// Media and Transcoding structures for new SoundCloud API
+// Media and Transcoding structures for SoundCloud API
 type Media struct {
 	Transcodings []Transcoding `json:"transcodings"`
 }
@@ -62,14 +62,14 @@ type Playlist struct {
 	User   User   `json:"user"`
 }
 
-// NewClient creates a new OAuth-based SoundCloud client
+// NewClient creates a OAuth-based SoundCloud client
 func NewClient(authToken string) *Client {
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 		authToken: strings.TrimSpace(authToken),
-		baseURL:   "https://api-v2.soundcloud.com", // API v2 für OAuth
+		baseURL:   "https://api-v2.soundcloud.com", // API v2 for OAuth
 	}
 }
 
@@ -107,8 +107,96 @@ type PlaylistService struct {
 	client *Client
 }
 
-// FromURL gets a playlist from URL using SoundCloud's resolve endpoint
+// FromURL gets a playlist from URL - handles both regular playlists and special URLs like likes
 func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
+	// Handle special URLs - ONLY for actual likes URLs
+	if strings.Contains(url, "/you/likes") || strings.Contains(url, "soundcloud.com/you/likes") {
+		return ps.getUserLikes()
+	}
+
+	// Try regular resolve for ALL other URLs, including your-playback URLs
+	return ps.resolvePlaylistFromURL(url)
+}
+
+// getUserLikes fetches the user's liked tracks using the correct V2 API endpoint
+func (ps *PlaylistService) getUserLikes() (*PlaylistWrapper, error) {
+	// First get user info to get the user ID
+	req, err := ps.client.makeRequest("GET", "/me", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create me request: %w", err)
+	}
+
+	resp, err := ps.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("me API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	// Now get the user's likes using the correct V2 endpoint: /users/{ID}/track_likes
+	endpoint := fmt.Sprintf("/users/%d/track_likes?limit=200", user.ID)
+	req, err = ps.client.makeRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create likes request: %w", err)
+	}
+
+	resp, err = ps.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get likes: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("likes API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	// The V2 track_likes endpoint returns a collection of like objects
+	var likesResponse struct {
+		Collection []struct {
+			Track Track `json:"track"`
+		} `json:"collection"`
+		NextHref string `json:"next_href"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&likesResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode likes: %w", err)
+	}
+
+	// Extract tracks from likes response
+	var tracks Tracks
+	for _, item := range likesResponse.Collection {
+		if item.Track.ID != 0 { // Make sure track exists
+			tracks = append(tracks, item.Track)
+		}
+	}
+
+	if len(tracks) == 0 {
+		return nil, fmt.Errorf("no liked tracks found")
+	}
+
+	// Create a virtual playlist for likes
+	playlist := &Playlist{
+		ID:     -1, // Virtual ID for likes playlist
+		Title:  fmt.Sprintf("Your Likes (%d tracks)", len(tracks)),
+		Tracks: tracks,
+		User:   user,
+	}
+
+	return &PlaylistWrapper{playlist: playlist}, nil
+}
+
+// resolvePlaylistFromURL handles regular playlist URLs using the resolve endpoint
+func (ps *PlaylistService) resolvePlaylistFromURL(url string) (*PlaylistWrapper, error) {
 	req, err := ps.client.makeRequest("GET", "/resolve?url="+url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resolve request: %w", err)
@@ -130,34 +218,63 @@ func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
 		return nil, fmt.Errorf("failed to decode resolve response: %w", err)
 	}
 
-	idFloat, ok := resolveData["id"].(float64)
+	// Handle both playlist and track resolves
+	kind, ok := resolveData["kind"].(string)
 	if !ok {
-		return nil, fmt.Errorf("could not extract numeric playlist ID from resolve response")
-	}
-	playlistID := fmt.Sprintf("%.0f", idFloat)
-
-	req, err = ps.client.makeRequest("GET", "/playlists/"+playlistID, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create playlist request: %w", err)
+		return nil, fmt.Errorf("could not determine resource kind from resolve response")
 	}
 
-	resp, err = ps.client.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make playlist request: %w", err)
-	}
-	defer resp.Body.Close()
+	switch kind {
+	case "playlist":
+		idFloat, ok := resolveData["id"].(float64)
+		if !ok {
+			return nil, fmt.Errorf("could not extract numeric playlist ID from resolve response")
+		}
+		playlistID := fmt.Sprintf("%.0f", idFloat)
 
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("playlist API request failed: status %d, body: %s", resp.StatusCode, string(body))
-	}
+		req, err = ps.client.makeRequest("GET", "/playlists/"+playlistID, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create playlist request: %w", err)
+		}
 
-	var playlist Playlist
-	if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
-		return nil, fmt.Errorf("failed to decode playlist: %w", err)
-	}
+		resp, err = ps.client.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make playlist request: %w", err)
+		}
+		defer resp.Body.Close()
 
-	return &PlaylistWrapper{playlist: &playlist}, nil
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("playlist API request failed: status %d, body: %s", resp.StatusCode, string(body))
+		}
+
+		var playlist Playlist
+		if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
+			return nil, fmt.Errorf("failed to decode playlist: %w", err)
+		}
+
+		return &PlaylistWrapper{playlist: &playlist}, nil
+
+	case "track":
+		// Single track - create a playlist with one track
+		var track Track
+		trackData, _ := json.Marshal(resolveData)
+		if err := json.Unmarshal(trackData, &track); err != nil {
+			return nil, fmt.Errorf("failed to decode track: %w", err)
+		}
+
+		playlist := &Playlist{
+			ID:     -2, // Virtual ID for single track playlist
+			Title:  "Single Track: " + track.Title,
+			Tracks: Tracks{track},
+			User:   track.User,
+		}
+
+		return &PlaylistWrapper{playlist: playlist}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported resource kind: %s", kind)
+	}
 }
 
 // TrackService handles track operations

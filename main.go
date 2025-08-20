@@ -1,190 +1,370 @@
-package main
+package soundcloud
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
-
-	"github.com/faiface/beep/speaker"
-	"github.com/gizak/termui/v3"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/cobra"
-
-	"github.com/E-Geraet/parakeet/cmd"
-	"github.com/E-Geraet/parakeet/player"
-	"github.com/E-Geraet/parakeet/soundcloud"
-	"github.com/E-Geraet/parakeet/ui"
 )
 
-// Main command that will be run when no other command is provided on the
-// command-line
-var rootCmd = &cobra.Command{
-	Use: "parakeet",
-	Run: func(cc *cobra.Command, _ []string) {
-		// Configuration
-		c, err := cmd.NewConf()
+// Client represents the OAuth-based SoundCloud client
+type Client struct {
+	httpClient *http.Client
+	authToken  string
+	baseURL    string
+}
+
+// User represents a SoundCloud user
+type User struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+}
+
+// Media and Transcoding structures for new SoundCloud API
+type Media struct {
+	Transcodings []Transcoding `json:"transcodings"`
+}
+
+type Transcoding struct {
+	URL     string `json:"url"`
+	Preset  string `json:"preset"`
+	Quality string `json:"quality"`
+	Format  struct {
+		Protocol string `json:"protocol"`
+		MimeType string `json:"mime_type"`
+	} `json:"format"`
+}
+
+// Track represents a SoundCloud track
+type Track struct {
+	ID           int    `json:"id"`
+	Title        string `json:"title"`
+	Duration     int    `json:"duration"`
+	PermalinkURL string `json:"permalink_url"`
+	LikesCount   int    `json:"likes_count"`
+	CommentCount int    `json:"comment_count"`
+	StreamURL    string `json:"stream_url"`   // Direct stream URL if available
+	DownloadURL  string `json:"download_url"` // Download URL fallback
+	User         User   `json:"user"`
+	Media        Media  `json:"media"`
+}
+
+// Tracks is a slice of Track
+type Tracks []Track
+
+// Playlist represents a SoundCloud playlist
+type Playlist struct {
+	ID     int    `json:"id"`
+	Title  string `json:"title"`
+	Tracks Tracks `json:"tracks"`
+	User   User   `json:"user"`
+}
+
+// NewClient creates a new OAuth-based SoundCloud client
+func NewClient(authToken string) *Client {
+	return &Client{
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		authToken: strings.TrimSpace(authToken),
+		baseURL:   "https://api-v2.soundcloud.com", // API v2 for OAuth
+	}
+}
+
+// makeRequest creates an authenticated HTTP request
+func (c *Client) makeRequest(method, endpoint string, body io.Reader) (*http.Request, error) {
+	url := c.baseURL + endpoint
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "OAuth "+c.authToken)
+	req.Header.Set("User-Agent", "SoundCloud-Terminal-Player/1.0")
+
+	return req, nil
+}
+
+// PlaylistWrapper is a wrapper around Playlist to mimic the old API
+type PlaylistWrapper struct {
+	playlist *Playlist
+}
+
+// Get returns the wrapped playlist
+func (pw *PlaylistWrapper) Get() (*Playlist, error) {
+	return pw.playlist, nil
+}
+
+// Playlist returns a playlist wrapper (mimics old API structure)
+func (c *Client) Playlist() *PlaylistService {
+	return &PlaylistService{client: c}
+}
+
+// PlaylistService handles playlist operations
+type PlaylistService struct {
+	client *Client
+}
+
+// FromURL gets a playlist from URL - handles both regular playlists and special URLs like likes
+func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
+	// Handle special URLs for likes
+	if strings.Contains(url, "/you/likes") || strings.Contains(url, "soundcloud.com/you/likes") {
+		return ps.getUserLikes()
+	}
+
+	// Everything else -> try normal resolve (also works for private playlists & "your-playback")
+	return ps.resolvePlaylistFromURL(url)
+}
+
+// getUserLikes fetches the user's liked tracks using the correct V2 API endpoint
+func (ps *PlaylistService) getUserLikes() (*PlaylistWrapper, error) {
+	// First get user info to get the user ID
+	req, err := ps.client.makeRequest("GET", "/me", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create me request: %w", err)
+	}
+
+	resp, err := ps.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user info: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("me API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, fmt.Errorf("failed to decode user info: %w", err)
+	}
+
+	// Now get the user's likes using the correct V2 endpoint: /users/{ID}/track_likes
+	endpoint := fmt.Sprintf("/users/%d/track_likes?limit=200", user.ID)
+	req, err = ps.client.makeRequest("GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create likes request: %w", err)
+	}
+
+	resp, err = ps.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get likes: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("likes API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	// The V2 track_likes endpoint returns a collection of like objects
+	var likesResponse struct {
+		Collection []struct {
+			Track Track `json:"track"`
+		} `json:"collection"`
+		NextHref string `json:"next_href"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&likesResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode likes: %w", err)
+	}
+
+	// Extract tracks from likes response
+	var tracks Tracks
+	for _, item := range likesResponse.Collection {
+		if item.Track.ID != 0 { // Make sure track exists
+			tracks = append(tracks, item.Track)
+		}
+	}
+
+	if len(tracks) == 0 {
+		return nil, fmt.Errorf("no liked tracks found")
+	}
+
+	// Create a virtual playlist for likes
+	playlist := &Playlist{
+		ID:     -1, // Virtual ID for likes playlist
+		Title:  fmt.Sprintf("Your Likes (%d tracks)", len(tracks)),
+		Tracks: tracks,
+		User:   user,
+	}
+
+	return &PlaylistWrapper{playlist: playlist}, nil
+}
+
+// resolvePlaylistFromURL handles regular playlist URLs using the resolve endpoint
+func (ps *PlaylistService) resolvePlaylistFromURL(url string) (*PlaylistWrapper, error) {
+	req, err := ps.client.makeRequest("GET", "/resolve?url="+url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resolve request: %w", err)
+	}
+
+	resp, err := ps.client.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to make resolve request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("resolve API request failed: status %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var resolveData map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&resolveData); err != nil {
+		return nil, fmt.Errorf("failed to decode resolve response: %w", err)
+	}
+
+	// Handle both playlist and track resolves
+	kind, ok := resolveData["kind"].(string)
+	if !ok {
+		return nil, fmt.Errorf("could not determine resource kind from resolve response")
+	}
+
+	switch kind {
+	case "playlist":
+		idFloat, ok := resolveData["id"].(float64)
+		if !ok {
+			return nil, fmt.Errorf("could not extract numeric playlist ID from resolve response")
+		}
+		playlistID := fmt.Sprintf("%.0f", idFloat)
+
+		req, err = ps.client.makeRequest("GET", "/playlists/"+playlistID, nil)
 		if err != nil {
-			log.Fatal().Err(err).Msg("unable to load conf")
+			return nil, fmt.Errorf("failed to create playlist request: %w", err)
 		}
-		// Logger
-		l := cmd.NewLogger(c)
-		
-		// Check for OAuth token
-		if c.AuthToken == "" {
-			l.Fatal().Msg("OAuth token required. Set PARAKEET_AUTH_TOKEN or use --auth_token flag")
+
+		resp, err = ps.client.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make playlist request: %w", err)
 		}
-		
-		// Soundcloud client mit OAuth
-		scc := soundcloud.NewClient(c.AuthToken)
-		run(c, l, scc)
-	},
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("playlist API request failed: status %d, body: %s", resp.StatusCode, string(body))
+		}
+
+		var playlist Playlist
+		if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
+			return nil, fmt.Errorf("failed to decode playlist: %w", err)
+		}
+
+		return &PlaylistWrapper{playlist: &playlist}, nil
+
+	case "track":
+		// Single track - create a playlist with one track
+		var track Track
+		trackData, _ := json.Marshal(resolveData)
+		if err := json.Unmarshal(trackData, &track); err != nil {
+			return nil, fmt.Errorf("failed to decode track: %w", err)
+		}
+
+		playlist := &Playlist{
+			ID:     -2, // Virtual ID for single track playlist
+			Title:  "Single Track: " + track.Title,
+			Tracks: Tracks{track},
+			User:   track.User,
+		}
+
+		return &PlaylistWrapper{playlist: playlist}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported resource kind: %s", kind)
+	}
 }
 
-func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
-	l.Debug().Str("build", cmd.Build).Str("version", cmd.Version).Msg("starting parakeet")
-	if c.URL == "" {
-		l.Fatal().Msg("no playlist URL provided, nothing to do")
-	}
+// TrackService handles track operations
+type TrackService struct {
+	client *Client
+}
 
-	l.Info().Str("url", c.URL).Msg("fetching playlist")
-	pls, err := scc.Playlist().FromURL(c.URL)
+// Track returns a track service
+func (c *Client) Track() *TrackService {
+	return &TrackService{client: c}
+}
+
+// TrackWrapper wraps track operations
+type TrackWrapper struct {
+	track  *Track
+	client *Client
+}
+
+// FromTrack creates a track wrapper from a track - but first fetches full track details
+func (ts *TrackService) FromTrack(t *Track, progressive bool) (*TrackWrapper, *Track, error) {
+	// Step 1: Fetch full track details to get media.transcodings
+	trackID := fmt.Sprintf("%d", t.ID)
+	req, err := ts.client.makeRequest("GET", "/tracks/"+trackID, nil)
 	if err != nil {
-		l.Fatal().Err(err).Msg("unable to get playlists")
+		return nil, nil, fmt.Errorf("failed to create track request: %w", err)
 	}
 
-	pl, err := pls.Get()
+	resp, err := ts.client.httpClient.Do(req)
 	if err != nil {
-		l.Fatal().Err(err).Msg("unable to retrieve tracks")
+		return nil, nil, fmt.Errorf("failed to make track request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, nil, fmt.Errorf("track API request failed: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	l.Info().Int("tracks", len(pl.Tracks)).Msg("playlist loaded successfully")
-
-	playingindex := 0
-	playing := pl.Tracks[playingindex]
-	var current *player.StreamerFormat
-
-	// Player setup and start
-	streamerchan := make(chan *player.StreamerFormat)
-	trackchan := make(chan soundcloud.Track)
-	togglechan := make(chan bool)
-	nextchan := make(chan bool)
-	player := player.NewPlayer(scc, trackchan, togglechan, nextchan, streamerchan)
-
-	l.Info().Str("track", playing.Title).Msg("starting player with first track")
-	go func() {
-		if err = player.Start(playing); err != nil {
-			l.Fatal().Err(err).Msg("unable to start player")
-		}
-	}()
-	current = <-streamerchan
-
-	if current == nil {
-		l.Fatal().Msg("failed to start initial track")
+	var fullTrack Track
+	if err := json.NewDecoder(resp.Body).Decode(&fullTrack); err != nil {
+		return nil, nil, fmt.Errorf("failed to decode track: %w", err)
 	}
 
-	// Initialize UI
-	if err := termui.Init(); err != nil {
-		l.Fatal().Err(err).Msg("failed to initialize termui")
-	}
-	defer termui.Close()
+	return &TrackWrapper{track: &fullTrack, client: ts.client}, &fullTrack, nil
+}
 
-	// Widgets setup and placement
-	w, h := termui.TerminalDimensions()
-	logowidget := ui.NewLogoWidget(h, w)
-	helpwidget := ui.NewHelpWidget(h, w)
-	infowidget := ui.NewInfoWidget(h, w)
-	tracklist := ui.NewTracklistWidget(h, w, pl.Tracks)
-	playerwidget := ui.NewPlayerWidget(h, w)
+// StreamQuality represents stream quality
+type StreamQuality string
 
-	// Draw function executed periodically or on event
-	draw := func() {
-		if current != nil {
-			speaker.Lock()
-			c := current.Format.SampleRate.D(current.Streamer.Position()).Round(time.Second)
-			speaker.Unlock()
-			playerwidget.Update(playing, current, c)
-			infowidget.Update(playing, current.TotalDuration)
-			termui.Render(playerwidget.Gauge,
-				playerwidget.Cursor,
-				playerwidget.Total,
-				tracklist,
-				infowidget,
-				logowidget,
-				helpwidget,
-			)
-		}
-	}
-	draw()
+const (
+	ProgressiveMP3 StreamQuality = "progressive_mp3"
+)
 
-	// Main control loop
-	uiEvents := termui.PollEvents()
-	ticker := time.NewTicker(100 * time.Millisecond).C
+// Stream gets the streaming URL for a track using the same logic as the debugger
+func (tw *TrackWrapper) Stream(quality StreamQuality) (string, error) {
+	// Look for progressive MP3 transcoding (exactly like the debugger)
+	for _, t := range tw.track.Media.Transcodings {
+		if t.Format.Protocol == "progressive" && strings.Contains(t.Format.MimeType, "mpeg") {
+			// Second request to get the final stream URL
+			endpoint := strings.TrimPrefix(t.URL, tw.client.baseURL)
+			req, err := tw.client.makeRequest("GET", endpoint, nil)
+			if err != nil {
+				continue
+			}
 
-	for {
-		select {
-		case e := <-uiEvents:
-			switch e.ID {
-			case "<Enter>":
-				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:green)", playing.Title, playing.User.Username)
-				playingindex = tracklist.SelectedRow
-				playing = pl.Tracks[playingindex]
-				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
-				l.Info().Str("track", playing.Title).Msg("user selected new track")
-				trackchan <- playing
-				current = <-streamerchan
-				if current == nil {
-					l.Warn().Str("track", playing.Title).Msg("failed to load selected track, trying next")
-					nextchan <- true
+			resp, err := tw.client.httpClient.Do(req)
+			if err != nil {
+				continue
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				var data map[string]interface{}
+				if err := json.NewDecoder(resp.Body).Decode(&data); err == nil {
+					if finalURL, ok := data["url"].(string); ok && finalURL != "" {
+						return finalURL, nil
+					}
 				}
-			case "<Down>":
-				tracklist.ScrollDown()
-			case "<Up>":
-				tracklist.ScrollUp()
-			case "<Space>":
-				togglechan <- true
-			case "q", "<C-c>":
-				l.Info().Msg("user requested exit")
-				return
-			case "<Resize>":
-				payload := e.Payload.(termui.Resize)
-				playerwidget.Cursor.SetRect(-1, payload.Height-2, 11, payload.Height+1)
-				playerwidget.Gauge.SetRect(10, payload.Height-2, payload.Width-10, payload.Height+1)
-				playerwidget.Total.SetRect(payload.Width-11, payload.Height-2, payload.Width+1, payload.Height+1)
-				tracklist.SetRect(0, 9, payload.Width/2, payload.Height-2)
-				infowidget.SetRect(payload.Width/2, 9, payload.Width, payload.Height-2)
-				logowidget.SetRect(0, -1, payload.Width-35, 9)
-				helpwidget.SetRect(payload.Width-35, 2, payload.Width, 9)
-				termui.Clear()
-				draw()
-			}
-		case <-ticker:
-			draw()
-		case <-nextchan:
-			tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:green)", playing.Title, playing.User.Username)
-			playingindex++
-			if playingindex >= len(pl.Tracks) {
-				playingindex = 0
-			}
-			playing = pl.Tracks[playingindex]
-			tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
-			l.Info().Str("track", playing.Title).Msg("auto-advancing to next track")
-			trackchan <- playing
-			current = <-streamerchan
-			if current == nil {
-				l.Warn().Str("track", playing.Title).Msg("failed to load next track, trying again")
-				// Will trigger another next automatically
 			}
 		}
 	}
-}
 
-func main() {
-	// Initialize Cobra and Viper
-	cmd.AddAllFlags(rootCmd)
-	rootCmd.AddCommand(cmd.VersionCmd)
-
-	// Run the command
-	if err := rootCmd.Execute(); err != nil {
-		log.Fatal().Err(err).Msg("unable to start")
+	// Fallback options (same as before)
+	if tw.track.StreamURL != "" {
+		return tw.track.StreamURL, nil
 	}
+	if tw.track.DownloadURL != "" {
+		return tw.track.DownloadURL, nil
+	}
+
+	return "", fmt.Errorf("no streaming URL found for track %d", tw.track.ID)
 }
+
