@@ -9,7 +9,6 @@ import (
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
-	"github.com/sirupsen/logrus"
 
 	"github.com/E-Geraet/parakeet/soundcloud"
 )
@@ -61,7 +60,7 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 		return nil, nil, fmt.Errorf("get stream url: %w", err)
 	}
 
-	logrus.WithField("url", url).Debug("Fetching stream from URL")
+	// Removed the debug logging that was cluttering the UI
 
 	if resp, err = http.Get(url); err != nil { // nolint: bodyclose
 		return nil, nil, fmt.Errorf("http request for mp3 failed: %w", err)
@@ -110,10 +109,9 @@ func (p *Player) Start(t soundcloud.Track) error {
 	for {
 		select {
 		case track := <-p.tc:
-			logrus.WithField("track", track.Title).Info("Switching to new track")
+			// Removed excessive logging for track switching
 			if sf, s, err = p.StreamerFromTrack(track); err != nil {
-				logrus.WithError(err).Error("Failed to get streamer for track, skipping")
-				// If an error occurs, go to the next track
+				// If an error occurs, go to the next track (no logging to avoid UI clutter)
 				p.streamerc <- nil
 				p.next <- true
 				break

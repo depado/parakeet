@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Client represents the OAuth-based SoundCloud client
+// Client represents the new OAuth-based SoundCloud client
 type Client struct {
 	httpClient *http.Client
 	authToken  string
@@ -22,7 +22,7 @@ type User struct {
 	Username string `json:"username"`
 }
 
-// Media and Transcoding structures for SoundCloud API
+// Media and Transcoding structures for new SoundCloud API
 type Media struct {
 	Transcodings []Transcoding `json:"transcodings"`
 }
@@ -62,7 +62,7 @@ type Playlist struct {
 	User   User   `json:"user"`
 }
 
-// NewClient creates a OAuth-based SoundCloud client
+// NewClient creates a new OAuth-based SoundCloud client
 func NewClient(authToken string) *Client {
 	return &Client{
 		httpClient: &http.Client{
@@ -114,8 +114,20 @@ func (ps *PlaylistService) FromURL(url string) (*PlaylistWrapper, error) {
 		return ps.getUserLikes()
 	}
 
-	// Try regular resolve for ALL other URLs, including your-playback URLs
-	return ps.resolvePlaylistFromURL(url)
+	// Try regular resolve for all other URLs first
+	playlist, err := ps.resolvePlaylistFromURL(url)
+	if err == nil {
+		return playlist, nil
+	}
+
+	// If resolve fails and it's a personal/discover URL, DON'T fall back to likes
+	// Just return the error
+	if strings.Contains(url, "your-playback") || strings.Contains(url, "/discover/") {
+		return nil, fmt.Errorf("unable to access personal/discover playlist - this might require special permissions: %w", err)
+	}
+
+	// For other URLs, return the original error
+	return nil, err
 }
 
 // getUserLikes fetches the user's liked tracks using the correct V2 API endpoint
@@ -251,6 +263,38 @@ func (ps *PlaylistService) resolvePlaylistFromURL(url string) (*PlaylistWrapper,
 		var playlist Playlist
 		if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
 			return nil, fmt.Errorf("failed to decode playlist: %w", err)
+		}
+
+		return &PlaylistWrapper{playlist: &playlist}, nil
+
+	case "system-playlist":
+		// Handle system playlists like "your-playback"
+		idFloat, ok := resolveData["id"].(float64)
+		if !ok {
+			return nil, fmt.Errorf("could not extract numeric system playlist ID from resolve response")
+		}
+		playlistID := fmt.Sprintf("%.0f", idFloat)
+
+		// Try to get system playlist using the same endpoint as regular playlists
+		req, err = ps.client.makeRequest("GET", "/playlists/"+playlistID, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create system playlist request: %w", err)
+		}
+
+		resp, err = ps.client.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make system playlist request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("system playlist API request failed: status %d, body: %s", resp.StatusCode, string(body))
+		}
+
+		var playlist Playlist
+		if err := json.NewDecoder(resp.Body).Decode(&playlist); err != nil {
+			return nil, fmt.Errorf("failed to decode system playlist: %w", err)
 		}
 
 		return &PlaylistWrapper{playlist: &playlist}, nil
