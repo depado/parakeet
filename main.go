@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
 	"github.com/faiface/beep/speaker"
@@ -9,8 +10,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-
-"github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/E-Geraet/parakeet/cmd"
 	"github.com/E-Geraet/parakeet/player"
@@ -18,10 +18,11 @@ import (
 	"github.com/E-Geraet/parakeet/ui"
 )
 
-
 func init() {
 	// Disable logrus logging to avoid UI clutter
 	logrus.SetLevel(logrus.PanicLevel)
+	// Seed random number generator
+	rand.Seed(time.Now().UnixNano())
 }
 
 // Main command that will be run when no other command is provided on the
@@ -48,6 +49,14 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// shuffleTracks shuffles a slice of tracks in place
+func shuffleTracks(tracks soundcloud.Tracks) {
+	for i := len(tracks) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		tracks[i], tracks[j] = tracks[j], tracks[i]
+	}
+}
+
 func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	l.Debug().Str("build", cmd.Build).Str("version", cmd.Version).Msg("starting parakeet")
 	if c.URL == "" {
@@ -65,7 +74,13 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 		l.Fatal().Err(err).Msg("unable to retrieve tracks")
 	}
 
-	l.Info().Int("tracks", len(pl.Tracks)).Msg("playlist loaded successfully")
+	// Shuffle tracks if requested
+	if c.Shuffle {
+		shuffleTracks(pl.Tracks)
+		l.Info().Int("tracks", len(pl.Tracks)).Msg("playlist loaded and shuffled successfully")
+	} else {
+		l.Info().Int("tracks", len(pl.Tracks)).Msg("playlist loaded successfully")
+	}
 
 	playingindex := 0
 	playing := pl.Tracks[playingindex]
@@ -103,6 +118,15 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	infowidget := ui.NewInfoWidget(h, w)
 	tracklist := ui.NewTracklistWidget(h, w, pl.Tracks)
 	playerwidget := ui.NewPlayerWidget(h, w)
+
+	// Update help widget to show shuffle status
+	if c.Shuffle {
+		helpwidget.Text = "     [[↑]](fg:blue,mod:bold)/[[↓]](fg:blue,mod:bold) Browse Tracklist\n" +
+			"    [[Return]](fg:blue,mod:bold) Play Selected Track\n" +
+			"     [[Space]](fg:blue,mod:bold) Pause/Play\n" +
+			"[[q]](fg:blue,mod:bold)/[[Ctrl+C]](fg:blue,mod:bold) Exit\n\n" +
+			"[🔀 SHUFFLED](fg:yellow,mod:bold)"
+	}
 
 	// Draw function executed periodically or on event
 	draw := func() {

@@ -24,6 +24,7 @@ type Conf struct {
 	UserID    string  `mapstructure:"user_id"`
 	AuthToken string  `mapstructure:"auth_token"` // Authentication Tooken
 	URL       string
+    Shuffle   bool    `mapstructure:"shuffle"`
 }
 
 // NewLogger will return a new logger
