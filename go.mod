@@ -1,11 +1,10 @@
-module github.com/depado/parakeet
+module github.com/E-Geraet/parakeet
 
 go 1.23.0
 
 toolchain go1.24.0
 
 require (
-	github.com/Depado/soundcloud v0.2.1
 	github.com/faiface/beep v1.1.0
 	github.com/gizak/termui/v3 v3.1.0
 	github.com/rs/zerolog v1.34.0
@@ -16,7 +15,6 @@ require (
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-resty/resty/v2 v2.16.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
 	github.com/hajimehoshi/oto v1.0.1 // indirect
@@ -39,7 +37,6 @@ require (
 	golang.org/x/exp/shiny v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/image v0.26.0 // indirect
 	golang.org/x/mobile v0.0.0-20250408133729-978277e7eaf7 // indirect
-	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

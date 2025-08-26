@@ -6,11 +6,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Depado/soundcloud"
 	"github.com/faiface/beep"
 	"github.com/faiface/beep/mp3"
 	"github.com/faiface/beep/speaker"
-	"github.com/sirupsen/logrus"
+
+	"github.com/E-Geraet/parakeet/soundcloud"
 )
 
 // Player holds the necessary data and structs to control the player
@@ -49,6 +49,7 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 		resp *http.Response
 	)
 
+	// Get track service and fetch full track details with media transcodings
 	ts, track, err := p.c.Track().FromTrack(&t, false)
 	if err != nil {
 		return nil, nil, fmt.Errorf("from track: %w", err)
@@ -59,13 +60,22 @@ func (p *Player) StreamerFromTrack(t soundcloud.Track) (*StreamerFormat, io.Read
 		return nil, nil, fmt.Errorf("get stream url: %w", err)
 	}
 
+	// Removed the debug logging that was cluttering the UI
+
 	if resp, err = http.Get(url); err != nil { // nolint: bodyclose
 		return nil, nil, fmt.Errorf("http request for mp3 failed: %w", err)
 	}
 
+	// Check if the response is valid
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("http request failed with status: %d", resp.StatusCode)
+	}
+
 	streamer, format, err := mp3.Decode(resp.Body)
 	if err != nil {
-		logrus.WithError(err).Fatal("Unable to decode MP3")
+		resp.Body.Close()
+		return nil, nil, fmt.Errorf("unable to decode MP3: %w", err)
 	}
 
 	return &StreamerFormat{
@@ -99,8 +109,9 @@ func (p *Player) Start(t soundcloud.Track) error {
 	for {
 		select {
 		case track := <-p.tc:
+			// Removed excessive logging for track switching
 			if sf, s, err = p.StreamerFromTrack(track); err != nil {
-				// If an error occurs, go to the next track
+				// If an error occurs, go to the next track (no logging to avoid UI clutter)
 				p.streamerc <- nil
 				p.next <- true
 				break
@@ -121,6 +132,5 @@ func (p *Player) Start(t soundcloud.Track) error {
 			ctrl.Paused = !ctrl.Paused
 			speaker.Unlock()
 		}
-
 	}
 }

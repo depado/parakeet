@@ -3,15 +3,15 @@ package ui
 import (
 	"time"
 
-	"github.com/Depado/soundcloud"
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 
-	"github.com/depado/parakeet/player"
-	"github.com/depado/parakeet/utils"
+	"github.com/E-Geraet/parakeet/player"
+	"github.com/E-Geraet/parakeet/soundcloud"
+	"github.com/E-Geraet/parakeet/utils"
 )
 
-// PlayerWidget is a set of widget (two paragraphs and a gauge) that represents
+// PlayerWidget is a set of widget that represents
 // the player in the app
 type PlayerWidget struct {
 	Gauge  *widgets.Gauge

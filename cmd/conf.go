@@ -20,9 +20,11 @@ type LogConf struct {
 
 // Conf holds the various configuration options for our application
 type Conf struct {
-	Log    LogConf `mapstructure:"log"`
-	UserID string  `mapstructure:"user_id"`
-	URL    string
+	Log       LogConf `mapstructure:"log"`
+	UserID    string  `mapstructure:"user_id"`
+	AuthToken string  `mapstructure:"auth_token"` // Authentication Tooken
+	URL       string
+    Shuffle   bool    `mapstructure:"shuffle"`
 }
 
 // NewLogger will return a new logger
@@ -84,3 +86,4 @@ func NewConf() (*Conf, error) {
 
 	return conf, nil
 }
+

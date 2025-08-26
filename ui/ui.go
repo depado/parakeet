@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Depado/soundcloud"
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
 
-	"github.com/depado/parakeet/utils"
+	"github.com/E-Geraet/parakeet/soundcloud"
+	"github.com/E-Geraet/parakeet/utils"
 )
 
 // NewTracklistWidget will return a new tracklist widget with the appropriate

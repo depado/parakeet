@@ -2,19 +2,28 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
-	"github.com/Depado/soundcloud"
 	"github.com/faiface/beep/speaker"
 	"github.com/gizak/termui/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/sirupsen/logrus"
 
-	"github.com/depado/parakeet/cmd"
-	"github.com/depado/parakeet/player"
-	"github.com/depado/parakeet/ui"
+	"github.com/E-Geraet/parakeet/cmd"
+	"github.com/E-Geraet/parakeet/player"
+	"github.com/E-Geraet/parakeet/soundcloud"
+	"github.com/E-Geraet/parakeet/ui"
 )
+
+func init() {
+	// Disable logrus logging to avoid UI clutter
+	logrus.SetLevel(logrus.PanicLevel)
+	// Seed random number generator
+	rand.Seed(time.Now().UnixNano())
+}
 
 // Main command that will be run when no other command is provided on the
 // command-line
@@ -28,21 +37,33 @@ var rootCmd = &cobra.Command{
 		}
 		// Logger
 		l := cmd.NewLogger(c)
-		// Soundcloud client
-		scc, err := soundcloud.NewAutoIDClient()
-		if err != nil {
-			l.Fatal().Err(err).Msg("unable to initialize soundcloud client")
+		
+		// Check for OAuth token
+		if c.AuthToken == "" {
+			l.Fatal().Msg("OAuth token required. Set PARAKEET_AUTH_TOKEN or use --auth_token flag")
 		}
+		
+		// Soundcloud client mit OAuth
+		scc := soundcloud.NewClient(c.AuthToken)
 		run(c, l, scc)
 	},
 }
 
+// shuffleTracks shuffles a slice of tracks in place
+func shuffleTracks(tracks soundcloud.Tracks) {
+	for i := len(tracks) - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		tracks[i], tracks[j] = tracks[j], tracks[i]
+	}
+}
+
 func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	l.Debug().Str("build", cmd.Build).Str("version", cmd.Version).Msg("starting parakeet")
-	if c.UserID == "" && c.URL == "" {
-		l.Fatal().Msg("no user id or url, nothing to do")
+	if c.URL == "" {
+		l.Fatal().Msg("no playlist URL provided, nothing to do")
 	}
 
+	l.Info().Str("url", c.URL).Msg("fetching playlist")
 	pls, err := scc.Playlist().FromURL(c.URL)
 	if err != nil {
 		l.Fatal().Err(err).Msg("unable to get playlists")
@@ -51,6 +72,14 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	pl, err := pls.Get()
 	if err != nil {
 		l.Fatal().Err(err).Msg("unable to retrieve tracks")
+	}
+
+	// Shuffle tracks if requested
+	if c.Shuffle {
+		shuffleTracks(pl.Tracks)
+		l.Info().Int("tracks", len(pl.Tracks)).Msg("playlist loaded and shuffled successfully")
+	} else {
+		l.Info().Int("tracks", len(pl.Tracks)).Msg("playlist loaded successfully")
 	}
 
 	playingindex := 0
@@ -64,12 +93,17 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	nextchan := make(chan bool)
 	player := player.NewPlayer(scc, trackchan, togglechan, nextchan, streamerchan)
 
+	l.Info().Str("track", playing.Title).Msg("starting player with first track")
 	go func() {
 		if err = player.Start(playing); err != nil {
 			l.Fatal().Err(err).Msg("unable to start player")
 		}
 	}()
 	current = <-streamerchan
+
+	if current == nil {
+		l.Fatal().Msg("failed to start initial track")
+	}
 
 	// Initialize UI
 	if err := termui.Init(); err != nil {
@@ -84,6 +118,15 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 	infowidget := ui.NewInfoWidget(h, w)
 	tracklist := ui.NewTracklistWidget(h, w, pl.Tracks)
 	playerwidget := ui.NewPlayerWidget(h, w)
+
+	// Update help widget to show shuffle status
+	if c.Shuffle {
+		helpwidget.Text = "     [[↑]](fg:blue,mod:bold)/[[↓]](fg:blue,mod:bold) Browse Tracklist\n" +
+			"    [[Return]](fg:blue,mod:bold) Play Selected Track\n" +
+			"     [[Space]](fg:blue,mod:bold) Pause/Play\n" +
+			"[[q]](fg:blue,mod:bold)/[[Ctrl+C]](fg:blue,mod:bold) Exit\n\n" +
+			"[🔀 SHUFFLED](fg:yellow,mod:bold)"
+	}
 
 	// Draw function executed periodically or on event
 	draw := func() {
@@ -118,8 +161,13 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 				playingindex = tracklist.SelectedRow
 				playing = pl.Tracks[playingindex]
 				tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
+				// Removed the log message that was cluttering the UI
 				trackchan <- playing
 				current = <-streamerchan
+				if current == nil {
+					l.Warn().Str("track", playing.Title).Msg("failed to load selected track, trying next")
+					nextchan <- true
+				}
 			case "<Down>":
 				tracklist.ScrollDown()
 			case "<Up>":
@@ -127,6 +175,7 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 			case "<Space>":
 				togglechan <- true
 			case "q", "<C-c>":
+				l.Info().Msg("user requested exit")
 				return
 			case "<Resize>":
 				payload := e.Payload.(termui.Resize)
@@ -150,8 +199,12 @@ func run(c *cmd.Conf, l zerolog.Logger, scc *soundcloud.Client) {
 			}
 			playing = pl.Tracks[playingindex]
 			tracklist.Rows[playingindex] = fmt.Sprintf("[%s - %s](fg:blue,mod:bold)", playing.Title, playing.User.Username)
+			// Removed excessive logging for auto-advance
 			trackchan <- playing
 			current = <-streamerchan
+			if current == nil {
+				// Will trigger another next automatically
+			}
 		}
 	}
 }
