@@ -8,7 +8,7 @@ require (
 	github.com/Depado/soundcloud v0.2.1
 	github.com/faiface/beep v1.1.0
 	github.com/gizak/termui/v3 v3.1.0
-	github.com/rs/zerolog v1.35.0
+	github.com/rs/zerolog v1.35.1
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
